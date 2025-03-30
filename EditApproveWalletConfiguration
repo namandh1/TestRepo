@@ -13,8 +13,6 @@ import moment from 'moment';
 function EditApproveWalletConfiguration(props) {
 
     const { open, setOpen, dispatch, alert, row } = props;
-    //console.log('Props:', props);
-    //console.log('Row:', row);
     const [chain, setchain] = useState([]);
     const [currency, setCurrency] = useState([]);
     const [currenciesList, setCurrenciesList] = useState([]);
@@ -40,13 +38,10 @@ function EditApproveWalletConfiguration(props) {
     useEffect(() => {
         const fetchBlockchainsData = async () => {
             try {
-                // Fetch Blockchains
                 genericGetData({
                     dispatch,
                     url: 'api/walletverificationapi/GetSatoshiBlockchains',
                     successCb: (data) => {
-                        //console.log('Blockchains :', data);
-                        // Store the entire blockchain objects array instead of just names
                         setchain(data.data);
                     },
                     errorCb: (err) => {
@@ -60,7 +55,6 @@ function EditApproveWalletConfiguration(props) {
 
         if (open) {
             fetchBlockchainsData();
-            // Load existing configurations
             loadExistingConfigurations();
         }
     }, [open]);
@@ -82,8 +76,7 @@ function EditApproveWalletConfiguration(props) {
             dontshowmessage: true,
             successCb: (data) => {
                 if (data && data.data) {
-                    console.log("currencies list: ", data.data);
-                    callback(data.data); // This now contains the full currency objects
+                    callback(data.data);
                 } else {
                     callback([]);
                 }
@@ -99,16 +92,11 @@ function EditApproveWalletConfiguration(props) {
     };
 
     var onClickUndoButton = (data) => {
-        // For edited rows, remove them and keep the original row
         if (data.status === 'edited') {
             setRowData(prevRows => prevRows.filter(row => row.id !== data.id));
-        }
-        // For new rows, simply remove them
-        else if (data.status === 'new') {
+        } else if (data.status === 'new') {
             setRowData(prevRows => prevRows.filter(row => row.id !== data.id));
-        }
-        // For original rows, reset any pending changes in edited copy
-        else if (data.status === 'original') {
+        } else if (data.status === 'original') {
             const editedRow = rowData.find(row =>
                 row.status === 'edited' && row.originalId === data.id
             );
@@ -120,29 +108,20 @@ function EditApproveWalletConfiguration(props) {
     };
 
     var onClickDeleteButton = (data) => {
-        // For edited rows, we should mark the original for deletion as well
         if (data.status === 'edited' && data.originalId) {
-            // Mark both the edited row and the original for deletion
             setRowData(prevRows => prevRows.map(row =>
                 (row.id === data.originalId || row.id === data.id)
                     ? { ...row, status: 'deleted', isActive: 0 }
                     : row
             ));
-        }
-        // For new rows, simply remove them from the list
-        else if (data.status === 'new') {
+        } else if (data.status === 'new') {
             setRowData(prevRows => prevRows.filter(row => row.id !== data.id));
-        }
-        // For original rows, mark as deleted
-        else if (data.status === 'original') {
-            // Mark original row as deleted and remove any edited version
+        } else if (data.status === 'original') {
             setRowData(prevRows => {
-                // First, filter out any edited version of this row
                 const withoutEdited = prevRows.filter(row =>
                     !(row.status === 'edited' && row.originalId === data.id)
                 );
 
-                // Then mark the original as deleted
                 return withoutEdited.map(row =>
                     row.id === data.id
                         ? { ...row, status: 'deleted', isActive: 0 }
@@ -173,19 +152,15 @@ function EditApproveWalletConfiguration(props) {
         </Space>
     );
 
-    // Column definitions for Ag Grid
     const columns = [
         {
             field: 'blockchain',
             headerName: 'Blockchain',
             valueFormatter: (params) => {
-                // Find the blockchain object by ID and return its name
                 const blockchain = chain.find(b => b.blockChainID === params.value);
                 return blockchain ? blockchain.blockchainName : '';
             },
             cellRenderer: (params) => {
-                console.log("params (inside cellRenderer of blockchain): ", params)
-                // Disable blockchain selection for edited original rows
                 const isDisabled = params.data.status === 'original' ||
                     (params.data.status === 'edited' && params.data.originalId);
 
@@ -198,7 +173,7 @@ function EditApproveWalletConfiguration(props) {
                     >
                         {chain.map(blockchain => (
                             <Select.Option key={blockchain.blockChainID} value={blockchain.blockChainID}>
-                                {blockchain.blockChainName}
+                                {blockchain.blockchainName}
                             </Select.Option>
                         ))}
                     </Select>
@@ -209,8 +184,6 @@ function EditApproveWalletConfiguration(props) {
             field: 'walletAddress',
             headerName: 'Wallet Address',
             cellRenderer: (params) => {
-                // Disable wallet address for edited original rows
-                console.log("params (inside cellRenderer of walletAddress): ", params)
                 const isDisabled = params.data.status === 'original' ||
                     (params.data.status === 'edited' && params.data.originalId);
 
@@ -227,10 +200,7 @@ function EditApproveWalletConfiguration(props) {
             field: 'currencies',
             headerName: 'Currency',
             cellRenderer: (params) => {
-                // Use the row's availableCurrencies if available, otherwise use the global currency state
                 const availableCurrencies = params.data.availableCurrencies || [];
-
-                // Make sure currencies is always an array
                 const selectedCurrencies = Array.isArray(params.value) ? params.value :
                     (params.value ? [params.value] : []);
 
@@ -240,7 +210,7 @@ function EditApproveWalletConfiguration(props) {
                         value={selectedCurrencies}
                         onChange={(value) => handleCellEdit(params.data, 'currencies', value)}
                         disabled={!params.data.blockchain}
-                        mode="multiple"  // Allow multiple selection if needed
+                        mode="multiple"
                     >
                         {availableCurrencies.map(curr => (
                             <Select.Option
@@ -296,42 +266,15 @@ function EditApproveWalletConfiguration(props) {
     };
 
     const updateRowData = (row, field, value) => {
-        // If editing an original row, create a new edited row
-        if (row.status === 'original') {
-            const editedRow = {
-                ...row,
-                id: `edited-${Date.now()}`,
-                originalId: row.id,
-                status: 'edited',
-                [field]: value
-            };
-            console.log("updateRowData-editedRow: ", editedRow);
-            setRowData(prevRows => {
-                // Find index of the original row
-                const originalIndex = prevRows.findIndex(r => r.id === row.id);
-                console.log("updateRowData-originalIndex: ", originalIndex);
-                // Insert the edited row right after the original row
-                return [
-                    ...prevRows.slice(0, originalIndex + 1),
-                    editedRow,
-                    ...prevRows.slice(originalIndex + 1)
-                ];
-            });
-        } else {
-            // For new or already edited rows, update directly
-            setRowData(prevRows => prevRows.map(r =>
-                r.id === row.id ? { ...r, [field]: value } : r
-            ));
-        }
+        setRowData(prevRows => prevRows.map(r =>
+            r.id === row.id ? { ...r, [field]: value } : r
+        ));
     };
 
-    // Handler for cell editing
     const handleCellEdit = (row, field, value) => {
         if (field === 'blockchain') {
-            // When blockchain changes, fetch new currencies and update the row
             fetchCurrenciesForBlockchain(value, (currencies) => {
                 if (row.status === 'original') {
-                    // Create a new edited row with updated blockchain and available currencies
                     const editedRow = {
                         ...row,
                         id: `edited-${Date.now()}`,
@@ -339,7 +282,6 @@ function EditApproveWalletConfiguration(props) {
                         status: 'edited',
                         blockchain: value,
                         availableCurrencies: currencies,
-                        // Reset currencies when blockchain changes
                         currencies: []
                     };
 
@@ -352,58 +294,32 @@ function EditApproveWalletConfiguration(props) {
                         ];
                     });
                 } else {
-                    // For new or already edited rows, update directly
                     setRowData(prevRows => prevRows.map(r =>
                         r.id === row.id ? {
                             ...r,
                             blockchain: value,
                             availableCurrencies: currencies,
-                            currencies: [] // Reset currencies when blockchain changes
+                            currencies: []
                         } : r
                     ));
                 }
             });
         } else {
-            // For other fields, just update normally
-            if (row.status === 'original') {
-                const editedRow = {
-                    ...row,
-                    id: `edited-${Date.now()}`,
-                    originalId: row.id,
-                    status: 'edited',
-                    [field]: value
-                };
-
-                setRowData(prevRows => {
-                    const originalIndex = prevRows.findIndex(r => r.id === row.id);
-                    return [
-                        ...prevRows.slice(0, originalIndex + 1),
-                        editedRow,
-                        ...prevRows.slice(originalIndex + 1)
-                    ];
-                });
-            } else {
-                // For new or already edited rows, update directly
-                setRowData(prevRows => prevRows.map(r =>
-                    r.id === row.id ? { ...r, [field]: value } : r
-                ));
-            }
+            updateRowData(row, field, value);
         }
     };
 
     const onChange = checked => {
-        console.log(`switch to ${checked}`);
         setVerificationLinkStatus(checked);
     };
 
-    // Handler for adding new row
     const handleAddNewRow = () => {
         const newRow = {
             id: `new-${Date.now()}`,
             blockchain: '',
             walletAddress: '',
             currencies: [],
-            availableCurrencies: [], // Initialize with empty array
+            availableCurrencies: [],
             isActive: 1,
             status: 'new',
             modifiedBy: '',
@@ -411,26 +327,20 @@ function EditApproveWalletConfiguration(props) {
             approvedBy: '',
             approvedDate: ''
         };
-        console.log("newRow: ", newRow);
         setRowData(prevRows => [...prevRows, newRow]);
     };
 
-    // Load existing configurations
     const loadExistingConfigurations = () => {
         genericGetData({
             dispatch,
             url: `api/walletverificationapi/GetFundWalletConfiguration?fundId=${row.fundID}`,
             successCb: (data) => {
-                console.log("existing configs: ", data.data);
-
-                // First transform the data to add status and ID
                 const existingConfig = data.data.map(config => ({
                     ...config,
                     status: 'original',
                     id: `original-${config.ConfigurationID}`
                 }));
 
-                // For each config, fetch the available currencies
                 const configsWithPromises = existingConfig.map(config => {
                     return new Promise(resolve => {
                         if (config.blockchain) {
@@ -446,7 +356,6 @@ function EditApproveWalletConfiguration(props) {
                     });
                 });
 
-                // When all promises are resolved, set the row data
                 Promise.all(configsWithPromises).then(configsWithCurrencies => {
                     setRowData(configsWithCurrencies);
                 });
@@ -457,42 +366,32 @@ function EditApproveWalletConfiguration(props) {
         });
     };
 
-    // Handler for saving configurations
     const saveWalletConfiguration = () => {
-
-        // Filter rows that need to be saved (new or edited)
         const configurationsToSave = rowData.filter(row =>
             (row.status === 'new' || row.status === 'edited') &&
             row.blockchain &&
             row.walletAddress
         );
-        console.log("configurationsToSave: ", configurationsToSave);
 
-        // Also include rows marked for deletion
         const configurationsToDelete = rowData.filter(row =>
             row.status === 'deleted' &&
-            !row.id.startsWith('new-') // Don't include new rows that were marked for deletion
+            !row.id.startsWith('new-')
         );
-        console.log("configurationsToDelete: ", configurationsToDelete);
 
-        // Validate at least one configuration exists
         if (configurationsToSave.length === 0 && configurationsToDelete.length === 0) {
             alert.error('No changes to save');
             return;
         }
 
-        // Prepare all configurations (new, edited, and deleted)
         const allConfigurations = [
             ...configurationsToSave.map(config => ({
-                // Extract the original ID if it's an edited row, otherwise use the ID if it's not a new row
                 configurationID: config.originalId ?
                     config.originalId.replace('original-', '') :
                     (config.id && !config.id.startsWith('new-') ? config.id.replace('original-', '') : null),
-                blockchain: config.blockchain, // This is now the blockchain ID
-                //blockchainName: chain.find(b => b.blockChainID === config.blockchain)?.blockChainName || '',
+                blockchain: config.blockchain,
                 walletAddress: config.walletAddress,
-                currencies: config.currencies || [], // Use empty array if undefined
-                isActive: 1 // Active
+                currencies: config.currencies || [],
+                isActive: 1
             })),
             ...configurationsToDelete.map(config => ({
                 configurationID: config.id.startsWith('original-') ?
@@ -500,25 +399,22 @@ function EditApproveWalletConfiguration(props) {
                 blockchain: config.blockchain,
                 walletAddress: config.walletAddress,
                 currencies: config.currencies || [],
-                isActive: 0 // Inactive/Deleted
+                isActive: 0
             }))
         ];
-        console.log("allConfigurations: ", allConfigurations);
 
-        // Make API call to save configurations
         genericPostData({
             dispatch,
             url: 'api/walletverificationapi/SaveWalletConfigurations',
             reqObj: {
-                fundID: row.fundID, // Make sure this matches the expected property name
+                fundID: row.fundID,
                 isActiveVerificationLink: verificationLinkStatus ? 1 : 0,
-                statusVerificationLink: 3, // Assuming 1 is active status, adjust as needed
-                fundWalletConfiguration: JSON.stringify(allConfigurations), // Convert to JSON string
+                statusVerificationLink: 3,
+                fundWalletConfiguration: JSON.stringify(allConfigurations),
                 modifiedBy: ""
             },
             successCb: (response) => {
                 alert.success('Configurations saved successfully');
-                // Reload configurations or close drawer
                 loadExistingConfigurations();
             },
             errorCb: (err) => {
@@ -538,7 +434,6 @@ function EditApproveWalletConfiguration(props) {
                 visible={open}
             >
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '16px' }}>
-                    {/* BusinessClients and Funds Filter */}
                     <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
                         <div>
                             <Label htmlFor="clients" style={{ marginBottom: '10px' }}>Client</Label>
@@ -565,7 +460,6 @@ function EditApproveWalletConfiguration(props) {
                         </div>
                     </div>
 
-                    {/* Verification Link Display and inactive/active verification link switch */}
                     <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
                         <div>
                             <Label htmlFor="verification-link">Verification Link</Label>
@@ -588,7 +482,6 @@ function EditApproveWalletConfiguration(props) {
                         </div>
                     </div>
 
-                    {/* Table with 7 columns and Add new Row button */}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
                         <Button
                             type="primary"
@@ -618,7 +511,6 @@ function EditApproveWalletConfiguration(props) {
                         />
                     </div>
 
-                    {/* Cancel and Save button */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px' }}>
                         <Button
                             label='Cancel'
@@ -643,7 +535,6 @@ function EditApproveWalletConfiguration(props) {
 
 function mapStateToProps(state) {
     let businessClientList = _get(state, "businessClientList.data.data", []);
-    //let fundsList = _get(state, "clientList.data.data", []);
     return { businessClientList }
 }
 
