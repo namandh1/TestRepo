@@ -1,0 +1,650 @@
+import { Button, Drawer, Input, Switch, Space, Tooltip, Select, Checkbox } from "antd";
+import { DeleteOutlined, UndoOutlined, PlusCircleOutlined } from '@ant-design/icons';
+import _get from "lodash/get";
+import React, { useEffect, useState, useMemo } from "react";
+import { withAlert } from 'react-alert';
+import { connect } from "react-redux";
+import { Label } from "reactstrap";
+import genericGetData from "../../../Redux/Actions/genericGetData";
+import genericPostData from "../../../Redux/Actions/genericPostData";
+import { AgGridReact } from 'ag-grid-react';
+import moment from 'moment';
+
+function EditApproveWalletConfiguration(props) {
+
+    const { open, setOpen, dispatch, alert, row } = props;
+    //console.log('Props:', props);
+    //console.log('Row:', row);
+    const [chain, setchain] = useState([]);
+    const [currency, setCurrency] = useState([]);
+    const [currenciesList, setCurrenciesList] = useState([]);
+    const [gridData, setGridData] = useState(props.data);
+    const [verificationLinkStatus, setVerificationLinkStatus] = useState(false);
+    const [rowData, setRowData] = useState([]);
+
+    const IsActiveRenderer = (props) => {
+        return (
+            <Checkbox
+                checked={props.value === 1}
+                onChange={(e) => props.onCheckboxChange(props.data, e.target.checked ? 1 : 0)}
+            />
+        );
+    };
+
+    useEffect(() => {
+        if (row && row.isActive !== undefined) {
+            setVerificationLinkStatus(row.isActive === 1);
+        }
+    }, [row]);
+
+    useEffect(() => {
+        const fetchBlockchainsData = async () => {
+            try {
+                // Fetch Blockchains
+                genericGetData({
+                    dispatch,
+                    url: 'api/walletverificationapi/GetSatoshiBlockchains',
+                    successCb: (data) => {
+                        //console.log('Blockchains :', data);
+                        // Store the entire blockchain objects array instead of just names
+                        setchain(data.data);
+                    },
+                    errorCb: (err) => {
+                        alert.error('Failed to fetch blockchains');
+                    }
+                });
+            } catch (error) {
+                alert.error('Error fetching blockchains dropdown data');
+            }
+        };
+
+        if (open) {
+            fetchBlockchainsData();
+            // Load existing configurations
+            loadExistingConfigurations();
+        }
+    }, [open]);
+
+    useEffect(() => {
+        console.log("props.data", props.data);
+        setGridData(props.data);
+    }, [props.data]);
+
+    const fetchCurrenciesForBlockchain = (blockchain, callback) => {
+        if (!blockchain) {
+            callback([]);
+            return;
+        }
+
+        genericGetData({
+            dispatch,
+            url: `api/walletverificationapi/GetCurrencyListForSatoshi?chainId=${blockchain}`,
+            dontshowmessage: true,
+            successCb: (data) => {
+                if (data && data.data) {
+                    console.log("currencies list: ", data.data);
+                    callback(data.data); // This now contains the full currency objects
+                } else {
+                    callback([]);
+                }
+            },
+            errorCb: (err) => {
+                console.error('Failed to fetch currencies for blockchain:', blockchain, err);
+                callback([]);
+                if (err.status === 403) {
+                    props.history.push("/AccessDenied");
+                }
+            }
+        });
+    };
+
+    var onClickUndoButton = (data) => {
+        // For edited rows, remove them and keep the original row
+        if (data.status === 'edited') {
+            setRowData(prevRows => prevRows.filter(row => row.id !== data.id));
+        }
+        // For new rows, simply remove them
+        else if (data.status === 'new') {
+            setRowData(prevRows => prevRows.filter(row => row.id !== data.id));
+        }
+        // For original rows, reset any pending changes in edited copy
+        else if (data.status === 'original') {
+            const editedRow = rowData.find(row =>
+                row.status === 'edited' && row.originalId === data.id
+            );
+
+            if (editedRow) {
+                setRowData(prevRows => prevRows.filter(row => row.id !== editedRow.id));
+            }
+        }
+    };
+
+    var onClickDeleteButton = (data) => {
+        // For edited rows, we should mark the original for deletion as well
+        if (data.status === 'edited' && data.originalId) {
+            // Mark both the edited row and the original for deletion
+            setRowData(prevRows => prevRows.map(row =>
+                (row.id === data.originalId || row.id === data.id)
+                    ? { ...row, status: 'deleted', isActive: 0 }
+                    : row
+            ));
+        }
+        // For new rows, simply remove them from the list
+        else if (data.status === 'new') {
+            setRowData(prevRows => prevRows.filter(row => row.id !== data.id));
+        }
+        // For original rows, mark as deleted
+        else if (data.status === 'original') {
+            // Mark original row as deleted and remove any edited version
+            setRowData(prevRows => {
+                // First, filter out any edited version of this row
+                const withoutEdited = prevRows.filter(row =>
+                    !(row.status === 'edited' && row.originalId === data.id)
+                );
+
+                // Then mark the original as deleted
+                return withoutEdited.map(row =>
+                    row.id === data.id
+                        ? { ...row, status: 'deleted', isActive: 0 }
+                        : row
+                );
+            });
+        }
+    };
+
+    var handleActionStatus = (data) => (
+        <Space>
+            <Tooltip title={"Undo"}>
+                <Button
+                    type="text"
+                    size="small"
+                    icon={<UndoOutlined style={{ fontSize: '17px', marginRight: "3px" }} />}
+                    onClick={() => { onClickUndoButton(data) }}
+                />
+            </Tooltip>
+            <Tooltip title={"Delete"}>
+                <Button
+                    type="text"
+                    size="small"
+                    icon={<DeleteOutlined style={{ fontSize: '17px' }} />}
+                    onClick={() => { onClickDeleteButton(data) }}
+                />
+            </Tooltip>
+        </Space>
+    );
+
+    // Column definitions for Ag Grid
+    const columns = [
+        {
+            field: 'blockchain',
+            headerName: 'Blockchain',
+            valueFormatter: (params) => {
+                // Find the blockchain object by ID and return its name
+                const blockchain = chain.find(b => b.blockChainID === params.value);
+                return blockchain ? blockchain.blockchainName : '';
+            },
+            cellRenderer: (params) => {
+                console.log("params (inside cellRenderer of blockchain): ", params)
+                // Disable blockchain selection for edited original rows
+                const isDisabled = params.data.status === 'original' ||
+                    (params.data.status === 'edited' && params.data.originalId);
+
+                return (
+                    <Select
+                        style={{ width: '100%' }}
+                        value={params.value}
+                        onChange={(value) => handleCellEdit(params.data, 'blockchain', value)}
+                        disabled={isDisabled}
+                    >
+                        {chain.map(blockchain => (
+                            <Select.Option key={blockchain.blockChainID} value={blockchain.blockChainID}>
+                                {blockchain.blockChainName}
+                            </Select.Option>
+                        ))}
+                    </Select>
+                );
+            }
+        },
+        {
+            field: 'walletAddress',
+            headerName: 'Wallet Address',
+            cellRenderer: (params) => {
+                // Disable wallet address for edited original rows
+                console.log("params (inside cellRenderer of walletAddress): ", params)
+                const isDisabled = params.data.status === 'original' ||
+                    (params.data.status === 'edited' && params.data.originalId);
+
+                return (
+                    <Input
+                        value={params.value}
+                        onChange={(e) => handleCellEdit(params.data, 'walletAddress', e.target.value)}
+                        disabled={isDisabled}
+                    />
+                );
+            }
+        },
+        {
+            field: 'currencies',
+            headerName: 'Currency',
+            cellRenderer: (params) => {
+                // Use the row's availableCurrencies if available, otherwise use the global currency state
+                const availableCurrencies = params.data.availableCurrencies || [];
+
+                // Make sure currencies is always an array
+                const selectedCurrencies = Array.isArray(params.value) ? params.value :
+                    (params.value ? [params.value] : []);
+
+                return (
+                    <Select
+                        style={{ width: '100%' }}
+                        value={selectedCurrencies}
+                        onChange={(value) => handleCellEdit(params.data, 'currencies', value)}
+                        disabled={!params.data.blockchain}
+                        mode="multiple"  // Allow multiple selection if needed
+                    >
+                        {availableCurrencies.map(curr => (
+                            <Select.Option
+                                key={curr.cryptoCurrencyId}
+                                value={curr.cryptoCurrencyId}
+                            >
+                                {curr.cryptoCurrencyName}
+                            </Select.Option>
+                        ))}
+                    </Select>
+                );
+            }
+        },
+        {
+            field: 'isActive',
+            headerName: 'Is Active',
+            cellRenderer: 'isActiveRenderer',
+            cellRendererParams: {
+                onCheckboxChange: (rowData, newValue) => handleCellEdit(rowData, 'isActive', newValue)
+            }
+        },
+        {
+            field: 'modifiedBy',
+            headerName: 'Modified Date and By',
+            valueGetter: p => moment(p.data.modifiedBy).format("MM-DD-YYYY hh:mm") + '; ' + p.data.modifiedBy,
+        },
+        {
+            field: 'approvedBy',
+            headerName: 'Approved Date and By',
+            valueGetter: p => moment(p.data.approvedBy).format("MM-DD-YYYY hh:mm:ss") + '; ' + p.data.approvedBy,
+        },
+        {
+            headerName: 'Action',
+            field: 'action',
+            flex: 1.2,
+            cellRenderer: handleActionStatus,
+        }
+    ];
+
+    const defaultColDef = useMemo(() => ({
+        editable: false,
+        sortable: false,
+        filter: false,
+        resizable: true,
+        minWidth: 100,
+        suppressMovable: true,
+        lockPosition: true,
+        flex: 2
+    }));
+
+    const onClose = () => {
+        setOpen(false);
+    };
+
+    const updateRowData = (row, field, value) => {
+        // If editing an original row, create a new edited row
+        if (row.status === 'original') {
+            const editedRow = {
+                ...row,
+                id: `edited-${Date.now()}`,
+                originalId: row.id,
+                status: 'edited',
+                [field]: value
+            };
+            console.log("updateRowData-editedRow: ", editedRow);
+            setRowData(prevRows => {
+                // Find index of the original row
+                const originalIndex = prevRows.findIndex(r => r.id === row.id);
+                console.log("updateRowData-originalIndex: ", originalIndex);
+                // Insert the edited row right after the original row
+                return [
+                    ...prevRows.slice(0, originalIndex + 1),
+                    editedRow,
+                    ...prevRows.slice(originalIndex + 1)
+                ];
+            });
+        } else {
+            // For new or already edited rows, update directly
+            setRowData(prevRows => prevRows.map(r =>
+                r.id === row.id ? { ...r, [field]: value } : r
+            ));
+        }
+    };
+
+    // Handler for cell editing
+    const handleCellEdit = (row, field, value) => {
+        if (field === 'blockchain') {
+            // When blockchain changes, fetch new currencies and update the row
+            fetchCurrenciesForBlockchain(value, (currencies) => {
+                if (row.status === 'original') {
+                    // Create a new edited row with updated blockchain and available currencies
+                    const editedRow = {
+                        ...row,
+                        id: `edited-${Date.now()}`,
+                        originalId: row.id,
+                        status: 'edited',
+                        blockchain: value,
+                        availableCurrencies: currencies,
+                        // Reset currencies when blockchain changes
+                        currencies: []
+                    };
+
+                    setRowData(prevRows => {
+                        const originalIndex = prevRows.findIndex(r => r.id === row.id);
+                        return [
+                            ...prevRows.slice(0, originalIndex + 1),
+                            editedRow,
+                            ...prevRows.slice(originalIndex + 1)
+                        ];
+                    });
+                } else {
+                    // For new or already edited rows, update directly
+                    setRowData(prevRows => prevRows.map(r =>
+                        r.id === row.id ? {
+                            ...r,
+                            blockchain: value,
+                            availableCurrencies: currencies,
+                            currencies: [] // Reset currencies when blockchain changes
+                        } : r
+                    ));
+                }
+            });
+        } else {
+            // For other fields, just update normally
+            if (row.status === 'original') {
+                const editedRow = {
+                    ...row,
+                    id: `edited-${Date.now()}`,
+                    originalId: row.id,
+                    status: 'edited',
+                    [field]: value
+                };
+
+                setRowData(prevRows => {
+                    const originalIndex = prevRows.findIndex(r => r.id === row.id);
+                    return [
+                        ...prevRows.slice(0, originalIndex + 1),
+                        editedRow,
+                        ...prevRows.slice(originalIndex + 1)
+                    ];
+                });
+            } else {
+                // For new or already edited rows, update directly
+                setRowData(prevRows => prevRows.map(r =>
+                    r.id === row.id ? { ...r, [field]: value } : r
+                ));
+            }
+        }
+    };
+
+    const onChange = checked => {
+        console.log(`switch to ${checked}`);
+        setVerificationLinkStatus(checked);
+    };
+
+    // Handler for adding new row
+    const handleAddNewRow = () => {
+        const newRow = {
+            id: `new-${Date.now()}`,
+            blockchain: '',
+            walletAddress: '',
+            currencies: [],
+            availableCurrencies: [], // Initialize with empty array
+            isActive: 1,
+            status: 'new',
+            modifiedBy: '',
+            modifiedDate: new Date().toString(),
+            approvedBy: '',
+            approvedDate: ''
+        };
+        console.log("newRow: ", newRow);
+        setRowData(prevRows => [...prevRows, newRow]);
+    };
+
+    // Load existing configurations
+    const loadExistingConfigurations = () => {
+        genericGetData({
+            dispatch,
+            url: `api/walletverificationapi/GetFundWalletConfiguration?fundId=${row.fundID}`,
+            successCb: (data) => {
+                console.log("existing configs: ", data.data);
+
+                // First transform the data to add status and ID
+                const existingConfig = data.data.map(config => ({
+                    ...config,
+                    status: 'original',
+                    id: `original-${config.ConfigurationID}`
+                }));
+
+                // For each config, fetch the available currencies
+                const configsWithPromises = existingConfig.map(config => {
+                    return new Promise(resolve => {
+                        if (config.blockchain) {
+                            fetchCurrenciesForBlockchain(config.blockchain, (currencies) => {
+                                resolve({
+                                    ...config,
+                                    availableCurrencies: currencies
+                                });
+                            });
+                        } else {
+                            resolve(config);
+                        }
+                    });
+                });
+
+                // When all promises are resolved, set the row data
+                Promise.all(configsWithPromises).then(configsWithCurrencies => {
+                    setRowData(configsWithCurrencies);
+                });
+            },
+            errorCb: (err) => {
+                alert.error('Failed to load existing configurations');
+            }
+        });
+    };
+
+    // Handler for saving configurations
+    const saveWalletConfiguration = () => {
+
+        // Filter rows that need to be saved (new or edited)
+        const configurationsToSave = rowData.filter(row =>
+            (row.status === 'new' || row.status === 'edited') &&
+            row.blockchain &&
+            row.walletAddress
+        );
+        console.log("configurationsToSave: ", configurationsToSave);
+
+        // Also include rows marked for deletion
+        const configurationsToDelete = rowData.filter(row =>
+            row.status === 'deleted' &&
+            !row.id.startsWith('new-') // Don't include new rows that were marked for deletion
+        );
+        console.log("configurationsToDelete: ", configurationsToDelete);
+
+        // Validate at least one configuration exists
+        if (configurationsToSave.length === 0 && configurationsToDelete.length === 0) {
+            alert.error('No changes to save');
+            return;
+        }
+
+        // Prepare all configurations (new, edited, and deleted)
+        const allConfigurations = [
+            ...configurationsToSave.map(config => ({
+                // Extract the original ID if it's an edited row, otherwise use the ID if it's not a new row
+                configurationID: config.originalId ?
+                    config.originalId.replace('original-', '') :
+                    (config.id && !config.id.startsWith('new-') ? config.id.replace('original-', '') : null),
+                blockchain: config.blockchain, // This is now the blockchain ID
+                //blockchainName: chain.find(b => b.blockChainID === config.blockchain)?.blockChainName || '',
+                walletAddress: config.walletAddress,
+                currencies: config.currencies || [], // Use empty array if undefined
+                isActive: 1 // Active
+            })),
+            ...configurationsToDelete.map(config => ({
+                configurationID: config.id.startsWith('original-') ?
+                    config.id.replace('original-', '') : config.id,
+                blockchain: config.blockchain,
+                walletAddress: config.walletAddress,
+                currencies: config.currencies || [],
+                isActive: 0 // Inactive/Deleted
+            }))
+        ];
+        console.log("allConfigurations: ", allConfigurations);
+
+        // Make API call to save configurations
+        genericPostData({
+            dispatch,
+            url: 'api/walletverificationapi/SaveWalletConfigurations',
+            reqObj: {
+                fundID: row.fundID, // Make sure this matches the expected property name
+                isActiveVerificationLink: verificationLinkStatus ? 1 : 0,
+                statusVerificationLink: 3, // Assuming 1 is active status, adjust as needed
+                fundWalletConfiguration: JSON.stringify(allConfigurations), // Convert to JSON string
+                modifiedBy: ""
+            },
+            successCb: (response) => {
+                alert.success('Configurations saved successfully');
+                // Reload configurations or close drawer
+                loadExistingConfigurations();
+            },
+            errorCb: (err) => {
+                alert.error('Failed to save configurations: ' + (err.message || 'Unknown error'));
+            }
+        });
+    };
+
+    return (
+        <>
+            <Drawer
+                title="Edit Wallet Configuration"
+                width="50%"
+                onClose={onClose}
+                open={open}
+                placement="right"
+                visible={open}
+            >
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '16px' }}>
+                    {/* BusinessClients and Funds Filter */}
+                    <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
+                        <div>
+                            <Label htmlFor="clients" style={{ marginBottom: '10px' }}>Client</Label>
+                            <Tooltip title={row && row.businessClientName ? row.businessClientName : ''}>
+                                <Input
+                                    placeholder='Client'
+                                    value={row && row.businessClientName ? row.businessClientName : ''}
+                                    style={{ width: '100%' }}
+                                    readOnly
+                                />
+                            </Tooltip>
+                        </div>
+
+                        <div>
+                            <Label htmlFor="funds" style={{ marginBottom: '10px' }}>Fund</Label>
+                            <Tooltip title={row && row.fundName ? row.fundName : ''}>
+                                <Input
+                                    placeholder='Fund'
+                                    value={row && row.fundName ? row.fundName : ''}
+                                    style={{ width: '100%' }}
+                                    readOnly
+                                />
+                            </Tooltip>
+                        </div>
+                    </div>
+
+                    {/* Verification Link Display and inactive/active verification link switch */}
+                    <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
+                        <div>
+                            <Label htmlFor="verification-link">Verification Link</Label>
+                            <Tooltip title={row && row.verificationLink ? row.verificationLink : ''}>
+                                <Input
+                                    placeholder='Verification Link'
+                                    value={row && row.verificationLink ? row.verificationLink : ''}
+                                    style={{ width: '100%' }}
+                                    readOnly
+                                />
+                            </Tooltip>
+                        </div>
+                        <div>
+                            <div>
+                                <Label htmlFor="verification-link-status">Link Status</Label>
+                            </div>
+                            <div>
+                                <Switch checked={verificationLinkStatus} onChange={onChange} style={{ marginTop: '10px' }} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Table with 7 columns and Add new Row button */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+                        <Button
+                            type="primary"
+                            icon={<PlusCircleOutlined />}
+                            onClick={handleAddNewRow}
+                        >
+                            Add New Configuration
+                        </Button>
+                    </div>
+
+                    <div className="ag-theme-alpine rounded-grid" style={{ flexGrow: 1, width: '100%' }}>
+                        <AgGridReact
+                            columnDefs={columns}
+                            rowData={rowData}
+                            components={{
+                                isActiveRenderer: (props) => IsActiveRenderer({
+                                    ...props,
+                                    onCheckboxChange: props.onCheckboxChange
+                                }),
+                            }}
+                            pagination={false}
+                            animateRows={true}
+                            defaultColDef={defaultColDef}
+                            domLayout='autoHeight'
+                            suppressHorizontalScroll={false}
+                            masterDetail={true}
+                        />
+                    </div>
+
+                    {/* Cancel and Save button */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px' }}>
+                        <Button
+                            label='Cancel'
+                            onClick={onClose}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="primary"
+                            label='Save'
+                            onClick={saveWalletConfiguration}
+                            style={{ backgroundColor: "#005A9C" }}
+                        >
+                            Save
+                        </Button>
+                    </div>
+                </div>
+            </Drawer>
+        </>
+    );
+}
+
+function mapStateToProps(state) {
+    let businessClientList = _get(state, "businessClientList.data.data", []);
+    //let fundsList = _get(state, "clientList.data.data", []);
+    return { businessClientList }
+}
+
+export default connect(mapStateToProps)(withAlert()(EditApproveWalletConfiguration));
