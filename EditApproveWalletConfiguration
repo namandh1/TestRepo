@@ -4,7 +4,6 @@ import { Button, Checkbox, Drawer, Input, message, Space, Spin, Switch, Tooltip 
 import _get from "lodash/get";
 import moment from 'moment';
 import React, { useEffect, useMemo, useState } from "react";
-import { useImperativeHandle } from 'react';
 import { withAlert } from 'react-alert';
 import { connect } from "react-redux";
 import CommonSelect from "../../../Global/UIComponents/CommonSelect";
@@ -707,7 +706,7 @@ function EditWalletConfiguration(props) {
 
 				// Create a ref to maintain focus
 				const inputRef = React.useRef(null);
-				
+
 				// Keep track of local state for the input value
 				const [inputValue, setInputValue] = React.useState(params.value);
 
@@ -732,10 +731,6 @@ function EditWalletConfiguration(props) {
 						style={params.data.action === 'U' && params.data.status === 2 ? { height: '20px' } : {}}
 						status={failedRegexConfig.includes(params.data.configurationID) ? "error" : null}
 						allowClear={true}
-						onKeyDown={(e) => {
-							console.log("Key Pressed: ", e.key);
-							e.stopPropagation();
-						} }
 					/>
 				);
 			}
