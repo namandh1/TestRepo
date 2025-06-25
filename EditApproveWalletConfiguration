@@ -1,6 +1,6 @@
-import { CopyOutlined, DeleteOutlined, LoadingOutlined, PlusCircleOutlined, QuestionCircleFilled, UndoOutlined } from '@ant-design/icons';
+import { CopyOutlined, DeleteOutlined, LoadingOutlined, PlusCircleOutlined, QuestionCircleFilled, UndoOutlined, ExportOutlined } from '@ant-design/icons';
 import { AgGridReact } from 'ag-grid-react';
-import { Button, Checkbox, Drawer, Input, message, Space, Spin, Switch, Tooltip } from "antd";
+import { Button, Checkbox, Drawer, Input, message, Space, Spin, Switch, Tooltip, Table, Modal } from "antd";
 import _get from "lodash/get";
 import moment from 'moment';
 import React, { useEffect, useMemo, useState } from "react";
@@ -27,6 +27,12 @@ function EditWalletConfiguration(props) {
 	const [lastEditedConfigId, setLastEditedConfigId] = useState(null);
 	const [fundComments, setFundComments] = useState('');
 	const [originalFundComments, setOriginalFundComments] = useState('');
+	const [additionalFundsModal, setAdditionalFundsModal] = useState(false);
+	const [additionalFundsData, setAdditionalFundsData] = useState([]);
+	const [additionalFundsLoading, setAdditionalFundsLoading] = useState(false);
+	const [selectedWalletAddress, setSelectedWalletAddress] = useState('');
+	const [walletAddressesWithNoFunds, setWalletAddressesWithNoFunds] = useState(new Set());
+
 
 	const onGridReady = (params) => {
 		setGridApi(params.api);
@@ -704,6 +710,46 @@ function EditWalletConfiguration(props) {
 				);
 			}
 		},
+		//{
+		//	field: 'walletAddress',
+		//	headerName: 'Wallet Address',
+		//	initialWidth: 390,
+		//	headerTooltip: 'Wallet Address',
+		//	cellRenderer: (params) => {
+		//		// Determine if wallet address should be disabled
+		//		const isDisabled = !isCellEditable(params.data, 'walletAddress');
+
+		//		// Create a ref to maintain focus
+		//		const inputRef = React.useRef(null);
+
+		//		// Keep track of local state for the input value
+		//		const [inputValue, setInputValue] = React.useState(params.value);
+
+		//		// Handle local changes without triggering grid refresh
+		//		const handleLocalChange = (e) => {
+		//			setInputValue(e.target.value);
+		//		};
+
+		//		// Only update the actual data when the input loses focus
+		//		const handleBlur = () => {
+		//			handleCellEdit(params.data, 'walletAddress', inputValue);
+		//		};
+
+		//		return (
+		//			<Input
+		//				ref={inputRef}
+		//				type="text"
+		//				value={inputValue}
+		//				onChange={handleLocalChange}
+		//				onBlur={handleBlur}
+		//				disabled={isDisabled}
+		//				style={params.data.action === 'U' && params.data.status === 2 ? { height: '20px' } : {}}
+		//				status={failedRegexConfig.includes(params.data.configurationID) ? "error" : null}
+		//				allowClear={true}
+		//			/>
+		//		);
+		//	}
+		//},
 		{
 			field: 'walletAddress',
 			headerName: 'Wallet Address',
@@ -727,23 +773,51 @@ function EditWalletConfiguration(props) {
 				// Only update the actual data when the input loses focus
 				const handleBlur = () => {
 					handleCellEdit(params.data, 'walletAddress', inputValue);
+					// Check for additional funds when user finishes editing
+					if (inputValue && inputValue.trim().length > 0) {
+						checkAdditionalFunds(inputValue.trim());
+					}
 				};
 
+				// Check if wallet address exists and is valid for showing the icon
+				const showIcon = inputValue && inputValue.trim().length > 30;
+				const hasNoFunds = walletAddressesWithNoFunds.has(inputValue?.trim());
+				const isIconDisabled = hasNoFunds;
+
 				return (
-					<Input
-						ref={inputRef}
-						type="text"
-						value={inputValue}
-						onChange={handleLocalChange}
-						onBlur={handleBlur}
-						disabled={isDisabled}
-						style={params.data.action === 'U' && params.data.status === 2 ? { height: '20px' } : {}}
-						status={failedRegexConfig.includes(params.data.configurationID) ? "error" : null}
-						allowClear={true}
-					/>
+					<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+						<Input
+							ref={inputRef}
+							type="text"
+							value={inputValue}
+							onChange={handleLocalChange}
+							onBlur={handleBlur}
+							disabled={isDisabled}
+							style={{
+								flex: 1,
+								...(params.data.action === 'U' && params.data.status === 2 ? { height: '20px' } : {})
+							}}
+							status={failedRegexConfig.includes(params.data.configurationID) ? "error" : null}
+							allowClear={true}
+						/>
+						{showIcon && (
+							<Tooltip title={isIconDisabled ? "No additional funds found for this wallet address" : "Additional Funds for Wallet Address"}>
+								<Button
+									type="text"
+									size="small"
+									icon={<ExportOutlined style={{ fontSize: '12px', color: isIconDisabled ? '#d9d9d9' : 'rgb(12, 42, 71)' }} />}
+									onClick={() => !isIconDisabled && fetchAdditionalFunds(inputValue)}
+									loading={additionalFundsLoading && selectedWalletAddress === inputValue}
+									disabled={isIconDisabled}
+									style={{ padding: '4px' }}
+								/>
+							</Tooltip>
+						)}
+					</div>
 				);
 			}
 		},
+
 		{
 			field: 'isActive',
 			headerName: 'Is Active',
@@ -845,6 +919,9 @@ function EditWalletConfiguration(props) {
 		setOriginalConfigData(null);
 		setFundComments('')
 		setOriginalFundComments('');
+		setAdditionalFundsModal(false);
+		setAdditionalFundsData([]);
+		setSelectedWalletAddress('');
 		setOpen(false);
 	};
 
@@ -941,6 +1018,67 @@ function EditWalletConfiguration(props) {
 					props.alert.error('Failed to save configurations: ' + (err.message || 'Unknown error'));
 				}
 				setLoading(false);
+			}
+		});
+	};
+
+	const fetchAdditionalFunds = (walletAddress) => {
+		if (!walletAddress) return;
+
+		setAdditionalFundsLoading(true);
+		setSelectedWalletAddress(walletAddress);
+
+		genericGetData({
+			dispatch: props.dispatch,
+			url: `api/walletverificationapi/GetAdditionalFundsForWalletConfiguration?walletAddress=${walletAddress}&fundId=${row.fundID}`,
+			successCb: (data) => {
+				const fundsData = data.data || [];
+				setAdditionalFundsData(fundsData);
+				if (fundsData.length === 0) {
+					setWalletAddressesWithNoFunds(prev => new Set([...prev, walletAddress]));
+				} else {
+					// Remove from no-funds set if data exists
+					setWalletAddressesWithNoFunds(prev => {
+						const newSet = new Set(prev);
+						newSet.delete(walletAddress);
+						return newSet;
+					});
+					setAdditionalFundsModal(true);
+				}
+				setAdditionalFundsLoading(false);
+			},
+			errorCb: (err) => {
+				props.alert.error('Failed to fetch additional funds data');
+				setAdditionalFundsLoading(false);
+			}
+		});
+	};
+
+	const checkAdditionalFunds = (walletAddress) => {
+		if (!walletAddress || walletAddress.trim().length === 0) return;
+
+		// Don't check again if we already know this address has no funds
+		if (walletAddressesWithNoFunds.has(walletAddress)) return;
+
+		genericGetData({
+			dispatch: props.dispatch,
+			url: `api/walletverificationapi/GetAdditionalFundsForWalletConfiguration?walletAddress=${walletAddress}&fundId=${row.fundID}`,
+			dontshowmessage: true,
+			successCb: (data) => {
+				const fundsData = data.data || [];
+				if (fundsData.length === 0) {
+					setWalletAddressesWithNoFunds(prev => new Set([...prev, walletAddress]));
+				} else {
+					setWalletAddressesWithNoFunds(prev => {
+						const newSet = new Set(prev);
+						newSet.delete(walletAddress);
+						return newSet;
+					});
+				}
+			},
+			errorCb: (err) => {
+				props.alert.error('Failed to fetch additional funds data');
+				setAdditionalFundsLoading(false);
 			}
 		});
 	};
@@ -1143,6 +1281,42 @@ function EditWalletConfiguration(props) {
 					</div>
 				</div>
 			</Drawer>
+			<Modal
+				title={`Additional Funds for Wallet Address: ${selectedWalletAddress}`}
+				open={additionalFundsModal}
+				onCancel={() => setAdditionalFundsModal(false)}
+				footer={[
+					<Button key="close" onClick={() => setAdditionalFundsModal(false)}>
+						Close
+					</Button>
+				]}
+				width={600}
+			>
+				<Table
+					dataSource={additionalFundsData}
+					loading={additionalFundsLoading}
+					pagination={false}
+					size="small"
+					locale={{
+						emptyText: 'No additional funds found for this wallet address'
+					}}
+					columns={[
+						{
+							title: 'Business Client Name',
+							dataIndex: 'businessClientRelationshipReportingName',
+							key: 'businessClientRelationshipReportingName',
+							width: '50%'
+						},
+						{
+							title: 'Fund Name',
+							dataIndex: 'clientName',
+							key: 'clientName',
+							width: '50%'
+						}
+					]}
+					rowKey={(record, index) => index}
+				/>
+			</Modal>
 		</>
 	);
 }
