@@ -781,7 +781,7 @@ function EditWalletConfiguration(props) {
 
 				// Check if wallet address exists and is valid for showing the icon
 				const showIcon = inputValue && inputValue.trim().length > 30;
-				const hasNoFunds = walletAddressesWithNoFunds.has(inputValue?.trim());
+				const hasNoFunds = walletAddressesWithNoFunds.has(inputValue && inputValue.trim());
 				const isIconDisabled = hasNoFunds;
 
 				return (
