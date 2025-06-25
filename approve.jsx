@@ -19,6 +19,7 @@ function ApproveWalletConfiguration(props) {
 	const [selectedRows, setSelectedRows] = useState([]);
 	const [showLinkCheckbox, setShowLinkCheckbox] = useState(false);
 	const [linkData, setLinkData] = useState(null);
+	const [comments, setComments] = useState('');
 	
 	const onClose = () => {
 		setShowLinkCheckbox(false);
@@ -32,6 +33,8 @@ function ApproveWalletConfiguration(props) {
 			successCb: (data) => {
 				setVerificationLinkStatus(data.data[0].isActive);
 				setLinkData(data.data[0]);
+				console.log("data is: ", data.data[0]);
+				setComments(data.data[0].comments || '');
 				if (data.data[0].status == 3) {
 					setShowLinkCheckbox(true)
 				}
@@ -420,7 +423,7 @@ function ApproveWalletConfiguration(props) {
 					</div>
 
 					{/* Verification Link Display and status switch */}
-					<div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
+					<div style={{ display: 'flex', gap: '20px', marginBottom: '10px' }}>
 						<div style={{ flex: 3 }}>
 							<Label htmlFor="verification-link">Verification Link</Label>
 							<div style={{ display: 'flex' }}>
@@ -470,6 +473,20 @@ function ApproveWalletConfiguration(props) {
 									<span style={{ marginLeft: '8px' }}><strong>Approve Link Status</strong></span>
 								</div>
 							</div>
+						</div>
+					</div>
+
+					{/* Comment Field */}
+					<div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+						<div style={{ flex: 1 }}>
+							<Label>Comments</Label>
+							<Tooltip title={comments}>
+								<Input
+									value={comments}
+									style={{ width: '100%' }}
+									readOnly
+									/>
+							</Tooltip>
 						</div>
 					</div>
 
