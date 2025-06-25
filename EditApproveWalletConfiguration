@@ -25,6 +25,8 @@ function EditWalletConfiguration(props) {
 	const [originalVerificationLinkStatus, setOriginalVerificationLinkStatus] = useState(false); // this will store original verificaion link status. 
 	const [linkStatusValue, setLinkStatusValue] = useState(null); // this is the status parameter value we are getting from API, we need to send the same while saving.
 	const [lastEditedConfigId, setLastEditedConfigId] = useState(null);
+	const [fundComments, setFundComments] = useState('');
+	const [originalFundComments, setOriginalFundComments] = useState('');
 
 	const onGridReady = (params) => {
 		setGridApi(params.api);
@@ -218,9 +220,12 @@ function EditWalletConfiguration(props) {
 				dispatch: props.dispatch,
 				url: `api/walletverificationapi/GetFundWalletVerificationLinkStatus?fundId=${row.fundID}`,
 				successCb: (data) => {
+					console.log("data is: ", data);
 					setVerificationLinkStatus(data.data[0].isActive);
 					setOriginalVerificationLinkStatus(data.data[0].isActive);
-					setLinkStatusValue(data.data[0].status)
+					setLinkStatusValue(data.data[0].status);
+					setFundComments(data.data[0].comments || '');
+					setOriginalFundComments(data.data[0].comments || '');
 				},
 				errorCb: (err) => {
 					props.alert.error('Failed to fetch verificationLinkStatus');
@@ -838,6 +843,8 @@ function EditWalletConfiguration(props) {
 		setVerificationLinkStatus(null);
 		setRowData(null);
 		setOriginalConfigData(null);
+		setFundComments('')
+		setOriginalFundComments('');
 		setOpen(false);
 	};
 
@@ -863,7 +870,7 @@ function EditWalletConfiguration(props) {
 			row.configurationID > 0
 		);
 		// Validate at least one configuration exists
-		if (configurationsToSave.length === 0 && configurationsToDelete.length === 0 && verificationLinkStatus === originalVerificationLinkStatus) {
+		if (configurationsToSave.length === 0 && configurationsToDelete.length === 0 && verificationLinkStatus === originalVerificationLinkStatus && fundComments === originalFundComments) {
 			props.alert.error('No changes to save');
 			setLoading(false);
 			return;
@@ -903,6 +910,7 @@ function EditWalletConfiguration(props) {
 				fundID: row.fundID,
 				isActiveVerificationLink: verificationLinkStatus === originalVerificationLinkStatus ? null : verificationLinkStatus,
 				statusVerificationLink: linkStatusValue,
+				fundComments: fundComments === originalFundComments ? null : fundComments, 
 				fundWalletConfiguration: allConfigurations,
 				modifiedBy: window.sessionStorage.getItem("loginName"),
 				blockChainList: chain,
@@ -911,14 +919,15 @@ function EditWalletConfiguration(props) {
 			successCb: (response) => {
 				// check if regex is failed for any config.
 				if (response.data["regex"].length > 0) {
-					setFailedRegexConfig(response.data["regex"])
+					setFailedRegexConfig(response.data["regex"]);
 					props.alert.error('Wallet Address Format is incorrect');
 				}
 				else if (response.data["duplicates"].length > 0) {
 					props.alert.error('This configuration already exists');
 				}
 				else {
-					setOriginalVerificationLinkStatus(verificationLinkStatus)
+					setOriginalVerificationLinkStatus(verificationLinkStatus);
+					setOriginalFundComments(fundComments);
 					props.alert.success('Changes saved successfully');
 					// Reload configurations
 					loadExistingConfigurations(chain);
@@ -993,7 +1002,7 @@ function EditWalletConfiguration(props) {
 					</div>
 
 					{/* Verification Link Display and inactive/active verification link switch */}
-					<div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
+					<div style={{ display: 'flex', gap: '20px', marginBottom: '10px' }}>
 						<div style={{ flex: 3 }}>
 							<div style={{ fontWeight: 'bold', marginBottom: '8px' }} >Verification Link</div>
 							<div style={{ display: 'flex' }}>
@@ -1027,6 +1036,17 @@ function EditWalletConfiguration(props) {
 								/>
 							</div>
 						</div>
+					</div>
+
+					<div style={{ marginBottom: '10px' }}>
+						<div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Comments</div>
+						<Input.TextArea
+							value={fundComments}
+							onChange={(e) => setFundComments(e.target.value)}
+							rows={2}
+							style={{ width: '100%' }}
+							allowClear={true}
+							/>
 					</div>
 
 					{/* Table with 7 columns and Add new Row button */}
