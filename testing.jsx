@@ -1,9 +1,3 @@
-const [additionalFundsModal, setAdditionalFundsModal] = useState(false);
-const [additionalFundsData, setAdditionalFundsData] = useState([]);
-const [additionalFundsLoading, setAdditionalFundsLoading] = useState(false);
-const [selectedWalletAddress, setSelectedWalletAddress] = useState('');
-
-
 const fetchAdditionalFunds = (walletAddress) => {
 	if (!walletAddress) return;
 	
@@ -14,8 +8,21 @@ const fetchAdditionalFunds = (walletAddress) => {
 		dispatch: props.dispatch,
 		url: `api/walletverificationapi/GetAdditionalFundsForWalletConfiguration?walletAddress=${walletAddress}&fundId=${row.fundID}`,
 		successCb: (data) => {
-			setAdditionalFundsData(data.data || []);
-			setAdditionalFundsModal(true);
+			const fundsData = data.data || [];
+			setAdditionalFundsData(fundsData);
+			
+			// Update the set of wallet addresses with no funds
+			if (fundsData.length === 0) {
+				setWalletAddressesWithNoFunds(prev => new Set([...prev, walletAddress]));
+			} else {
+				// Remove from no-funds set if data exists
+				setWalletAddressesWithNoFunds(prev => {
+					const newSet = new Set(prev);
+					newSet.delete(walletAddress);
+					return newSet;
+				});
+				setAdditionalFundsModal(true);
+			}
 			setAdditionalFundsLoading(false);
 		},
 		errorCb: (err) => {
@@ -26,6 +33,34 @@ const fetchAdditionalFunds = (walletAddress) => {
 };
 
 
+const checkAdditionalFunds = (walletAddress) => {
+	if (!walletAddress || walletAddress.trim().length === 0) return;
+	
+	// Don't check again if we already know this address has no funds
+	if (walletAddressesWithNoFunds.has(walletAddress)) return;
+	
+	genericGetData({
+		dispatch: props.dispatch,
+		url: `api/walletverificationapi/GetAdditionalFundsForWalletConfiguration?walletAddress=${walletAddress}&fundId=${row.fundID}`,
+		dontshowmessage: true,
+		successCb: (data) => {
+			const fundsData = data.data || [];
+			if (fundsData.length === 0) {
+				setWalletAddressesWithNoFunds(prev => new Set([...prev, walletAddress]));
+			} else {
+				setWalletAddressesWithNoFunds(prev => {
+					const newSet = new Set(prev);
+					newSet.delete(walletAddress);
+					return newSet;
+				});
+			}
+		},
+		errorCb: (err) => {
+			// Silently handle error for background check
+			console.error('Failed to check additional funds:', err);
+		}
+	});
+};
 
 
 {
@@ -51,10 +86,16 @@ const fetchAdditionalFunds = (walletAddress) => {
 		// Only update the actual data when the input loses focus
 		const handleBlur = () => {
 			handleCellEdit(params.data, 'walletAddress', inputValue);
+			// Check for additional funds when user finishes editing
+			if (inputValue && inputValue.trim().length > 0) {
+				checkAdditionalFunds(inputValue.trim());
+			}
 		};
 
 		// Check if wallet address exists and is valid for showing the icon
 		const showIcon = inputValue && inputValue.trim().length > 0;
+		const hasNoFunds = walletAddressesWithNoFunds.has(inputValue?.trim());
+		const isIconDisabled = hasNoFunds;
 
 		return (
 			<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -73,13 +114,14 @@ const fetchAdditionalFunds = (walletAddress) => {
 					allowClear={true}
 				/>
 				{showIcon && (
-					<Tooltip title="Additional Funds for Wallet Address">
+					<Tooltip title={isIconDisabled ? "No additional funds found for this wallet address" : "Additional Funds for Wallet Address"}>
 						<Button
 							type="text"
 							size="small"
-							icon={<ExportOutlined style={{ fontSize: '16px' }} />}
-							onClick={() => fetchAdditionalFunds(inputValue)}
+							icon={<ExportOutlined style={{ fontSize: '16px', color: isIconDisabled ? '#d9d9d9' : undefined }} />}
+							onClick={() => !isIconDisabled && fetchAdditionalFunds(inputValue)}
 							loading={additionalFundsLoading && selectedWalletAddress === inputValue}
+							disabled={isIconDisabled}
 							style={{ padding: '4px' }}
 						/>
 					</Tooltip>
@@ -91,59 +133,15 @@ const fetchAdditionalFunds = (walletAddress) => {
 
 
 
-
-{/* Additional Funds Modal */}
-<Modal
-	title={`Additional Funds for Wallet Address: ${selectedWalletAddress}`}
-	open={additionalFundsModal}
-	onCancel={() => setAdditionalFundsModal(false)}
-	footer={[
-		<Button key="close" onClick={() => setAdditionalFundsModal(false)}>
-			Close
-		</Button>
-	]}
-	width={600}
->
-	<Table
-		dataSource={additionalFundsData}
-		loading={additionalFundsLoading}
-		pagination={false}
-		size="small"
-		locale={{
-			emptyText: 'No additional funds found for this wallet address'
-		}}
-		columns={[
-			{
-				title: 'Business Client Name',
-				dataIndex: 'businessClientName',
-				key: 'businessClientName',
-				width: '50%'
-			},
-			{
-				title: 'Fund Name',
-				dataIndex: 'fundName',
-				key: 'fundName',
-				width: '50%'
-			}
-		]}
-		rowKey={(record, index) => index}
-	/>
-</Modal>
-
-
-
-
 const onClose = () => {
 	setVerificationLinkStatus(null);
 	setRowData(null);
 	setOriginalConfigData(null);
 	setFundComments('')
 	setOriginalFundComments('');
-	// Add these new lines:
 	setAdditionalFundsModal(false);
 	setAdditionalFundsData([]);
 	setSelectedWalletAddress('');
+	setWalletAddressesWithNoFunds(new Set()); // Add this line
 	setOpen(false);
 };
-
-
