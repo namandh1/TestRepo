@@ -268,6 +268,33 @@ function ApproveWalletConfiguration(props) {
 			headerTooltip: 'Is Active'
 		},
 		{
+			field: 'comments',
+			headerName: 'Comments',
+			initialWidth: 170,
+			headerTooltip: 'Comments',
+			cellRenderer: (params) => {
+				const commentsText = params.data.comments || ''; 
+				return (
+				<Tooltip title={commentsText} placement='topLeft'>
+					<div style={{
+						display: 'flex',
+						alignItems: 'center',
+						height: '100%',
+						padding: '4px 8px'
+					}}>
+						<span style={{
+							whiteSpace: 'nowrap',
+							overflow: 'hidden',
+							textOverflow: 'ellipsis',
+							width: '100%'
+							}}> {commentsText}
+						</span>
+					</div>
+				</Tooltip>
+				);
+			}
+		},
+		{
 			field: 'modifiedBy',
 			headerName: 'Modified Date and By',
 			initialWidth: 190,
