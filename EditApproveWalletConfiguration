@@ -100,7 +100,7 @@ function EditWalletConfiguration(props) {
 
 			// For action 'U' (update), only these two fields are editable
 			if (rowData.action === 'U') {
-				return field === 'currencyID' || field === 'isActive';
+				return field === 'currencyID' || field === 'isActive' || field === 'comments';
 			}
 
 			return true;
@@ -112,7 +112,7 @@ function EditWalletConfiguration(props) {
 				return false;
 			}
 			if (rowData.action === null) {
-				return field === 'currencyID' || field === 'isActive';
+				return field === 'currencyID' || field === 'isActive' || field === 'comments';
 			}
 		}
 
@@ -347,6 +347,7 @@ function EditWalletConfiguration(props) {
 			currencyID: null, // Changed from [] to null for single select
 			availableCurrencies: [], // Initialize with empty array
 			isActive: 1,
+			comments: '',
 			configStatus: 'new',
 			status: 3, // Set as pending for approval
 			modifiedBy: window.sessionStorage.getItem("loginName"),
@@ -377,6 +378,7 @@ function EditWalletConfiguration(props) {
 									currencyID: originalRow.currencyID,
 									currencySymbol: originalRow.currencySymbol,
 									isActive: originalRow.isActive,
+									comments: originalRow.comments || '',
 									configStatus: 'original', // Reset the configStatus to original
 									action: originalRow.action
 								};
@@ -400,6 +402,7 @@ function EditWalletConfiguration(props) {
 									currencyID: originalRow.currencyID,
 									currencySymbol: originalRow.currencySymbol,
 									isActive: originalRow.isActive,
+									comments: originalRow.comments || '',
 									configStatus: 'edited'
 								};
 							}
@@ -425,6 +428,7 @@ function EditWalletConfiguration(props) {
 							chainName: '',
 							currencySymbol: '',
 							isActive: 1,
+							comments: '',
 							availableCurrencies: []
 						};
 					}
@@ -443,7 +447,7 @@ function EditWalletConfiguration(props) {
 			else if (data.configStatus === 'deleted') {
 				setRowData(prevRows =>
 					prevRows.map(row =>
-						row.configurationID === data.configurationID ? { ...row, configStatus: 'original', isActive: 1, action: null } : row
+						row.configurationID === data.configurationID ? { ...row, configStatus: 'original', isActive: 1, comments: row.comments || '', action: null } : row
 					)
 				);
 			}
@@ -491,7 +495,7 @@ function EditWalletConfiguration(props) {
 
 		if (row.status === 2) {
 			// For configStatus 2 rows, only allow editing currency and isActive fields
-			if (field === 'currencyID' || field === 'isActive') {
+			if (field === 'currencyID' || field === 'isActive' || field === 'comments') {
 				// Update the specific field
 				// Also mark it as edited so we can track changes for undo
 				if (row.configStatus !== 'edited') {
@@ -564,7 +568,7 @@ function EditWalletConfiguration(props) {
 					}
 				}
 			}
-			else if (field === 'walletAddress') {
+			else if (field === 'walletAddress' || field === 'comments') {
 				updateRowData(row, field, value);
 				if (row.configStatus == null) {
 					updateRowData(row, 'configStatus', "edited");
@@ -748,6 +752,46 @@ function EditWalletConfiguration(props) {
 			}
 		},
 		{
+			field: 'comments',
+			headerName: 'Comments',
+			initialWidth: 170,
+			headerTooltip: 'Comments',
+			cellRenderer: (params) => {
+				// Determine if comments should be disabled
+				const isDisabled = !isCellEditable(params.data, 'comments');
+
+				// Create a ref to maintain focus
+				const inputRef = React.useRef(null);
+
+				// Keep track of local state for the input value
+				const [inputValue, setInputValue] = React.useState(params.value || '');
+
+				// Handle local changes without triggering grid refresh
+				const handleLocalChange = (e) => {
+					setInputValue(e.target.value);
+				};
+
+				// Only update the actual data when the input loses focus
+				const handleBlur = () => {
+					handleCellEdit(params.data, 'comments', inputValue);
+				};
+
+				return (
+					<Input
+						ref={inputRef}
+						type="text"
+						value={inputValue}
+						onChange={handleLocalChange}
+						onBlur={handleBlur}
+						disabled={isDisabled}
+						style={params.data.action === 'U' && params.data.status === 2 ? { height: '20px' } : {}}
+						allowClear={true}
+					/>
+				);
+			}
+		},
+
+		{
 			field: 'modifiedBy',
 			headerName: 'Modified Date and By',
 			initialWidth: 190,
@@ -835,6 +879,7 @@ function EditWalletConfiguration(props) {
 				CurrencyID: config.currencyID,
 				WalletAddress: config.walletAddress,
 				IsActive: config.isActive,
+				Comments: config.comments || '',
 				Action: config.action ? config.action : 'U', // if action is null (in case of permanent row) than update action to U
 				Status: config.status || 3 // Status 3 is for pending
 			})),
@@ -845,6 +890,7 @@ function EditWalletConfiguration(props) {
 				WalletAddress: config.walletAddress,
 				CurrencyID: config.currencyID,
 				IsActive: 0, // Inactive/Deleted
+				Comments: config.comments || '',
 				Action: 'D',
 				Status: config.status || 3 // Status 3 is for pending
 			}))
