@@ -1,0 +1,1259 @@
+import React, { useState, useEffect } from 'react';
+import { Drawer, Button, Typography, Tooltip, Switch } from 'antd';
+import { TextField, Box } from '@mui/material';
+import { ExportOutlined, CopyOutlined } from '@ant-design/icons'; // Import the icon  
+import "../../../assets/stylesheets/WalletVerificationStyles/WalletTestDetails.css"
+import CommonSelect from "../../../Global/UIComponents/CommonSelect";
+import { connect } from "react-redux";
+import genericGetData from "../../../Redux/Actions/genericGetData";
+import genericPostData from "../../../Redux/Actions/genericPostData";
+import { withAlert } from 'react-alert';
+import Modal from "../../../Global/UIComponents/Modal";
+import { Modal as Modal1 } from "antd";
+import AdditionalWalletTestDetails from "./AdditionalWalletTestDetails"
+import { LoadingOutlined } from '@ant-design/icons';
+import { Spin } from "antd";
+import { WalletVerificationStatus, AMLStatus, AMLCategory, MailStatus, convertStatusObjectToArray } from "../../../Global/CommonEnum/WalletVerificationViewEnum";
+import { ExclamationCircleFilled } from '@ant-design/icons';
+
+
+
+
+const { Text } = Typography;
+
+const AddEditWalletTest = (props) => {
+    const [formValues, setFormValues] = useState(props.initialValues)
+    const [commonCounts, setCommonCounts] = useState({ 'sameWalletCount': 1, 'sameEmailCount': 1 });
+    const [isExpired, setExpired] = useState(true);
+    const [timeZone, setTimeZone] = useState('CST');
+    const [additionalModalType, setAdditionalModalType] = useState('')
+    const [loading, setLoading] = useState(false);
+    const [walletVerificationBlockChains, setWalletVerificationBlockChains] = useState();
+    const [showRefreshModal, setShowRefreshModal] = useState(false);
+    const [refreshModalMessage, setRefreshModalMessage] = useState('');
+
+    
+    const [isModalVisible, setIsModalVisible] = useState(false);
+    const [amlStatusError, setAmlStatusError] = useState(''); 
+    const [txnHashError, setTxnHashError] = useState(''); 
+    const [xPubKeyError, setXPubKeyError] = useState('');  
+
+
+    const verificationStatusData = convertStatusObjectToArray(WalletVerificationStatus);
+    const amlStatusData = convertStatusObjectToArray(AMLStatus);
+    const amlCategoryData = convertStatusObjectToArray(AMLCategory);
+    const mailStatusData = convertStatusObjectToArray(MailStatus);
+
+
+    const amlErrorMessages = {
+        invalidStatus: "Invalid AML Test Status for the current Wallet Verification Status.",
+        invalidTransition: "AML Test Status transition not allowed."
+    };
+
+    // Define the valid AML Test Status options based on Wallet Verification Status
+    const validAMLStatusOptions = {
+        "Test Initiated": ["Blank"],
+        "Expired": ["Blank"],
+        "Success": ["Pending For Review", "Pass", "Fail", "Cancel"],
+        "Failed": ["Blank", "Pass", "Fail", "Cancel"]
+    };
+
+    // Define the valid transitions for AML Test Status
+    const validAMLTransitions = {
+        "Blank": ["Pass", "Fail", "Pending For Review", "Blank", "Cancel"],
+        "Pending For Review": ["Pass", "Fail", "Pending For Review", "Cancel"],
+        "Pass": ["Pass", "Fail", "Pending For Review", "Blank", "Cancel"],
+        "Fail": ["Pass", "Fail", "Pending For Review", "Blank", "Cancel"],
+        "Cancel": ["Pass", "Fail", "Pending For Review", "Blank", "Cancel"],
+    };
+
+
+    
+    const showModal = (type) => {
+        setAdditionalModalType(type);
+        setIsModalVisible(true);
+    };
+
+    const handleModalClose = () => {
+        setIsModalVisible(false);
+    };  
+
+
+    const onToggleTimeZone = (checked) => {
+        setTimeZone(checked ? 'CST' : 'IST');
+    };
+
+    
+
+    const validateAMLStatusChange = (newAMLStatus, walletVerificationStatus, currentAMLStatus) => {
+        
+
+        // Map integer codes to their corresponding names for WalletVerificationStatus and AMLTestStatus
+        const walletVerificationStatusName = verificationStatusData.find(option => option.key == walletVerificationStatus).name;
+        const newAMLStatusName = newAMLStatus == null ? "Blank" : amlStatusData.find(option => option.key == newAMLStatus).name;
+        const currentAMLStatusName = currentAMLStatus == null ? "Blank" : amlStatusData.find(option => option.key == currentAMLStatus).name;
+
+
+        // Check if the new AML Status is valid for the current Wallet Verification Status
+        if (!validAMLStatusOptions[walletVerificationStatusName].includes(newAMLStatusName)) {
+            return { isValid: false, message: amlErrorMessages.invalidStatus };
+        }
+
+        // Check if the transition from the current AML Status to the new AML Status is valid
+        if (currentAMLStatusName && !validAMLTransitions[currentAMLStatusName].includes(newAMLStatusName)) {
+            return { isValid: false, message: amlErrorMessages.invalidTransition };
+        }
+
+        // If both checks pass, the change is valid
+        return { isValid: true, message: "" };
+    };
+
+    const handleAMLStatusChange = (newAMLStatus) => {
+        const validation = validateAMLStatusChange(
+            newAMLStatus,
+            formValues.walletVerificationStatus,
+            formValues.amlTestStatus,
+        );
+
+        if (!validation.isValid) {
+            setFormValues((prevValues) => ({
+                ...prevValues,
+                amlTestStatus: newAMLStatus
+            }))
+            setAmlStatusError(validation.message); // Set error message  
+            return;
+        }
+
+        setAmlStatusError(''); // Clear error message if valid  
+        // Proceed with updating the AML Test Status
+        setFormValues((prevValues) => ({
+            ...prevValues,
+            amlTestStatus: newAMLStatus,
+            versionDate: new Date().toISOString(),
+            versionSource: window.sessionStorage.getItem("loginName"),
+            amlTestStatusChangeDate: new Date().toISOString(),
+            amlTestStatusChangeBy: window.sessionStorage.getItem("loginName"),
+        }));
+    };
+
+
+
+    const getCommonCounts = () => {
+
+        setLoading(true);
+
+        genericGetData({
+            dispatch: props.dispatch,
+            url: `api/walletverificationapi/GetAdditionalCountData?invWalletAddress=${props.initialValues.investorWalletAddress}&invEmail=${props.initialValues.investorEmail}&walletTestID=${props.initialValues.walletTestID}`,
+            identifier: "",
+            dontShowMessage: true,
+            successCb: (data) => {
+                setCommonCounts(data.data);
+                setLoading(false);
+            },
+            errorCb: (err) => {
+                if (err.status === 403)
+                    props.alert.error('Something went wrong!', { position: "bottom center", timeout: 10000, width: "auto" })
+                setLoading(false);
+            }
+        });
+
+       
+        return;
+    }
+
+    const getWalletVerificationBlockChains = (chainID) => {
+        setLoading(true);
+
+         genericGetData({
+            dispatch: props.dispatch,
+            url: `api/walletverificationapi/getWalletVerificationBlockChains?chainID=${chainID}`,
+            identifier: "",
+            dontShowMessage: true,
+            successCb: (data) => {
+                setWalletVerificationBlockChains(data.data);
+                setLoading(false);
+            },
+            errorCb: (err) => {
+                if (err.status === 403)
+                    props.alert.error('Something went wrong!', { position: "bottom center", timeout: 10000, width: "auto" })
+                setLoading(false);
+            }
+        });
+
+        
+        return;
+
+    }
+
+
+
+    useEffect(() => {
+        // This effect runs only once like componentDidMount
+        //console.log("hello", props.open, verificationStatusData, amlStatusData, amlCategoryData, mailStatusData)
+        setLoading(true);
+        if (props.initialValues)
+            updateForm()
+            //setFormValues(props.initialValues);
+        setTimeZone(props.timeZone)
+        setLoading(false);
+        //console.log("Component mounted or props.initialValues updated:", props.initialValues);
+        return () => {
+            //console.log("Component unmounted");
+        };
+
+    }, [props.initialValues]);
+
+
+    useEffect(() => {
+        //console.log("Updated formValues", formValues);
+
+        if (formValues && formValues.walletTestID) {
+            getCommonCounts();
+            if (formValues.chainID)
+                getWalletVerificationBlockChains(formValues.chainID);
+            if (new Date(formValues.expiryDate) < new Date().toISOString())
+                setExpired(false)    
+        }
+        
+        return () => {
+
+        };
+
+    }, [formValues.walletTestID]);
+
+
+    const onFinish = (event) => {
+
+        setAmlStatusError('');
+        setTxnHashError('');
+        setXPubKeyError('');
+        props.onClose();
+    };
+
+    const copyToClipboard = (value) => {
+        navigator.clipboard.writeText(value);
+        //alert('Link copied to clipboard!');
+    };
+
+
+    function validateString(input, pattern) {
+        const regex = new RegExp(pattern);
+        return regex.test(input);
+    }
+
+
+    useEffect(() => {
+        console.log(16, walletVerificationBlockChains)
+        if (formValues && formValues.testVerificationHash && walletVerificationBlockChains && walletVerificationBlockChains.chainID == formValues.chainID)
+        {
+
+            if (formValues.testType == 1) {
+                if (walletVerificationBlockChains.transactionHashLengthRegex && !validateString(formValues.testVerificationHash, walletVerificationBlockChains.transactionHashLengthRegex))
+                    setTxnHashError("Invalid Length");
+                else if (walletVerificationBlockChains.transactionHashRegex && !validateString(formValues.testVerificationHash, walletVerificationBlockChains.transactionHashRegex))
+                    setTxnHashError("Invalid Transaction hash format");
+                else
+                    setTxnHashError("");
+            }
+            else {
+                if (walletVerificationBlockChains.signatureHashLengthRegex && !validateString(formValues.testVerificationHash, walletVerificationBlockChains.signatureHashLengthRegex))
+                    setTxnHashError("Invalid Length");
+                else if (walletVerificationBlockChains.signatureHashRegex && !validateString(formValues.testVerificationHash, walletVerificationBlockChains.signatureHashRegex))
+                    setTxnHashError("Invalid Singnature hash format");
+                else
+                    setTxnHashError("");
+            }
+        }
+        else {
+            setTxnHashError("");
+        }
+        
+    }, [formValues.testVerificationHash, walletVerificationBlockChains]);
+
+    useEffect(() => {
+        if (formValues && formValues.xpubKey && walletVerificationBlockChains && walletVerificationBlockChains.chainID == formValues.chainID) {
+            if (formValues.testType == 1) {
+                if (walletVerificationBlockChains.xPubKeyLengthRegex && !validateString(formValues.xpubKey, walletVerificationBlockChains.xPubKeyLengthRegex))
+                    setXPubKeyError("Invalid Length");
+                else if (walletVerificationBlockChains.xPubKeyRegex && !validateString(formValues.xpubKey, walletVerificationBlockChains.xPubKeyRegex))
+                    setXPubKeyError("Invalid XPubKey format");
+                else
+                    setXPubKeyError("");
+            }
+        }
+        else {
+            setXPubKeyError("");
+        }
+    }, [formValues.xpubKey]);
+ 
+   
+
+    useEffect(() => {
+        if (formValues && formValues.mailStatus) {
+            setFormValues((prevValues) => ({
+                ...prevValues,
+                mailSentDate: (!formValues.mailStatus || formValues.mailStatus === null) ? null : new Date().toISOString(),
+            }));
+        }
+        
+            
+    }, [formValues.mailStatus]);
+
+    
+    const setDropdownValue1 = (name, value) =>
+    {
+        
+        const parsedValue = parseInt(value,10); 
+        const finalValue = isNaN(parsedValue) ? null : parsedValue;
+
+        if (name == 'amlTestStatus') {
+            handleAMLStatusChange(finalValue);
+            return;
+        }
+
+        setFormValues((prevValues) => ({
+            ...prevValues,
+            [name]: finalValue,
+            versionDate: new Date().toISOString(),
+            versionSource: window.sessionStorage.getItem("loginName"),
+        }));
+
+        //console.log(`Updated ${name}:`, formValues);
+    };
+
+
+    const handleInputChange = (event) => {
+        const { name, value } = event.target;
+        setFormValues((prevValues) => ({
+            ...prevValues,
+            [name]: value,
+            versionDate: new Date().toISOString(),
+            versionSource: window.sessionStorage.getItem("loginName"),
+        }));
+    };
+
+    const updateForm = () => {
+
+        setLoading(true);
+
+        let reqObj = {
+            'pageNo': 1, 'pageSize': 1, 'sortColumn': 'TestInputGenerationDate', 'sortOrder': 'DESC',
+            "walletTestIDs": props.initialValues && props.initialValues.walletTestID ? props.initialValues.walletTestID.toString() : null
+        }
+        genericPostData({
+            dispatch: props.dispatch,
+            url: `api/walletverificationapi/GetFundWalletTestData`,
+            reqObj: reqObj,
+            identifier: "",
+            dontShowMessage: true,
+            successCb: (data) => {
+                //console.log(data)
+                setFormValues(data.data.fundWalletTestDetails[0])
+            },
+            errorCb: (err) => {
+                props.onClose();
+            }
+
+        });
+
+        //setLoading(false);
+    }
+
+    const verifyWalletTest = () => {
+        if (!formValues.testVerificationHash || formValues.testVerificationHash.trim() === "") {
+            setTxnHashError("*required");
+            return;
+        }
+        if (walletVerificationBlockChains && walletVerificationBlockChains.xPubKeyRegex && (!formValues.xpubKey || formValues.xpubKey.trim() === "")) {
+            setXPubKeyError("*required");
+            return;
+        }
+        if (xPubKeyError || txnHashError) {
+            props.alert.error("Please resolve the validation errors before verifying.", { position: "bottom center", timeout: 10000, width: "auto" });
+        }
+
+        // Proceed with verification logic
+        //console.log("Verifying wallet test with Transaction Hash:", formValues.testVerificationHash);
+        // Add your verification logic here
+        var guid = formValues.verificationLink.split('/');
+        let reqObj = {};
+        reqObj.GUID = guid[guid.length - 1];
+        reqObj.InvestorEmailAddress = formValues.investorEmail;
+        reqObj.TransactionHash = formValues.testVerificationHash;
+        reqObj.MessageHash = formValues.testVerificationHash;
+        reqObj.XPubKey = formValues.xpubKey;
+        reqObj.Comments = formValues.comments;
+        reqObj.TestType = formValues.testType;
+        reqObj.WalletTestID = formValues.walletTestID;
+
+        setLoading(true);
+
+        genericPostData({
+            dispatch: props.dispatch,
+            reqObj: reqObj,
+            url: `api/walletverificationapi/VerifyWalletTest`,
+            identifier: "",
+            dontShowMessage: true,
+            successCb: (data) => {
+
+                updateForm()
+                setLoading(false);
+                /*setFormValues((prevValues) => ({
+                    ...prevValues,
+                    walletVerificationStatus: 2,
+                    walletVerificationStatusValue: "Success",
+                    amlTestStatus: 1,
+                    amlTestStatusValue : "PendingForReview"
+                }));*/
+            },
+            errorCb: (error) => {
+               
+                if (error.status == 403)
+                    props.history.push("/AccessDenied")
+                else {
+
+                    updateForm()
+                    /*setFormValues((prevValues) => ({
+                        ...prevValues,
+                        walletVerificationStatus: 3,
+                        walletVerificationStatusValue: "Failed"
+                    }));*/
+                    props.alert.error(`${error.err} \n Error Code ${error.errCode}`, { position: "bottom center", timeout: 10000, width: "auto" })
+                }
+                setLoading(false);
+            }
+        });
+
+        
+
+
+
+
+    }
+
+    const saveWalletTestDetails = () =>
+    {
+        if (amlStatusError || txnHashError || xPubKeyError) {
+            props.alert.error("Please resolve the validation errors before saving.", { position: "bottom center", timeout: 10000, width: "auto" });
+            return;
+        }
+
+        setLoading(true);  
+
+        genericPostData({
+            dispatch: props.dispatch,
+            reqObj: formValues,
+            url: `api/walletverificationapi/SetWalletTestDetails`,
+            identifier: "",
+            dontShowMessage: true,
+            successCb: () => {
+                updateForm()
+                setLoading(false);
+                props.alert.success('Data Saved Succesfully')
+            },
+            errorCb: (error) => {
+                setLoading(false);
+
+                if (error.status == 403)
+                    props.history.push("/AccessDenied")
+                if (error.err && error.err.includes("DB: The test has already been modified")) {
+                    let refreshMessage = error.err.replace("DB: ", '').trimStart()
+                    setRefreshModalMessage(refreshMessage);
+                    setShowRefreshModal(true);
+                }
+                else {
+                    props.alert.error(`${error.err} \n Error Code ${error.errCode}`, { position: "bottom center", timeout: 10000, width: "auto" })
+                }
+            }
+        });
+
+       
+
+    }
+
+    // Converting data when timeZone is changed
+    const formatToTimeZone = (dateValue, timeZone) => {
+        const zoneMap = {
+            IST: 'Asia/Kolkata',
+            CST: 'US/Central',
+        }
+
+        if (!dateValue) return '';
+        const date = new Date(dateValue + 'Z');
+        const formatted = date.toLocaleString('en-US', {
+            timeZone: zoneMap[timeZone],
+            year: '2-digit',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        });
+
+        const [datePart, timePart] = formatted.split(', ');
+        const [month, day, year] = datePart.split('/');
+
+        return `${month}-${day}-${year} ${timePart} (${timeZone})`;
+
+    };
+
+
+
+    return (
+
+
+        <div>
+
+            
+            <Drawer
+                title={
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: "rgb(12, 42, 71)", padding: '10px', color: '#c2c7d0' }}>  
+                        <span>{props.editType == 'read' ? 'View' : 'Edit'} Wallet Test Details : {formValues.walletTestID} {verificationStatusData
+                                .filter(option => option.name === formValues.walletVerificationStatusValue)
+                                .map((item) => (
+                                    <Tooltip title={item.name} key={item.key}>
+                                        <span style={{ marginLeft: '10px' }}>
+                                            {item.icon}
+                                        </span>
+                                    </Tooltip>
+                                ))}
+                                                   
+                        </span>                          
+                        <div style={{ display: 'flex', alignItems: 'center'}}>
+                           
+                        <Switch
+                            className="time-switch"
+                            size="default"
+                            checkedChildren="CST"
+                            unCheckedChildren="IST"
+                            checked={timeZone === 'CST'}
+                            onChange={onToggleTimeZone}
+                            style={{
+                                backgroundColor: timeZone === 'CST' ? '#005A9C' : '#b4babf',
+                                color: timeZone === 'CST' ? '#c2c7d0' : '#c2c7d0',
+                                border: '1px solid #c2c7d0'
+                                
+                            }}
+                        />
+                        </div>
+                    </div>
+                }
+                placement="right"
+                visible={props.open}
+                width={1200}
+                headerStyle={{ backgroundColor: 'rgb(12, 42, 71)', color: 'white',  height:'57px' }}  
+                bodyStyle={{
+                    paddingBottom: '0px', // Adjust padding to prevent overlap with footer
+                    //maxHeight: 'calc(100vh - 100px)', // Ensure the drawer height respects header and footer
+                    overflowY: 'auto', // Enable scrolling if content exceeds height
+                    padding: '0',
+                    
+                }}
+                style={{ marginTop: '57px'} }
+                onClose={onFinish}
+                closable={false}
+
+            >
+
+                <div style={{ display: 'flex', height: '100%', marginTop: '0px' }}>
+
+                    {/* Left Section */}
+                    <div style={{ flex: 1, padding: '20px', paddingTop: '20px', overflowY: 'auto', backgroundColor: '#f5f5f5' }}>
+                        
+                        <form onSubmit={onFinish}>
+                            <h6 style={{ marginBottom: '20px', fontWeight: "bolder" }}>Wallet Test Info</h6>
+                            <Box mb={2} display="flex" alignItems="center">
+                                <TextField
+                                    label="Link"
+                                    name="verificationLink"
+                                    value={formValues.verificationLink || ""}
+                                    InputProps={{
+                                        readOnly: true,
+                                        style: { fontSize: '13px' } // Increased border size
+                                    }}
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                />
+                                <Tooltip title="Copy Link">
+                                    <Button
+                                        type="button"
+                                        icon={<CopyOutlined />}
+                                        style={{ marginLeft: '10px' }}
+                                        onClick={() => copyToClipboard(formValues.verificationLink)}
+                                    />
+                                </Tooltip>
+                            </Box>
+                            <Box mb={2}>
+                                <TextField
+                                    label="Client Name"
+                                    name="businessClientName"
+                                    value={formValues.businessClientName || ""}
+                                    InputProps={{
+                                        readOnly: true,
+                                        style: { fontSize: '13px', borderWidth: '10px' } // Increased border size
+                                    }}
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                />
+                                                                   
+                            </Box>
+                            <Box mb={2}>
+                                <TextField
+                                    label="Fund Name"
+                                    name="fundName"
+                                    value={formValues.fundName || ""}
+                                    InputProps={{
+                                        readOnly: true,
+                                        style: { fontSize: '13px'} // Increased border size
+                                    }}
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                />
+                            </Box>
+                            
+
+                            <Box mb={2}>
+                                <TextField
+                                    label="Investor Name"
+                                    name="investorName"
+                                    value={formValues.investorName || ""}
+                                    InputProps={{
+                                        readOnly: true,
+                                        style: { fontSize: '13px'} // Increased border size
+                                    }}
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                />
+                            </Box>
+                            <Box mb={2}>
+                                <TextField
+                                    label="Investor Email"
+                                    name="investorEmail"
+                                    value={formValues.investorEmail || ""}
+                                    InputProps={{
+                                        readOnly: true,
+                                        style: { fontSize: '13px' } // Increased border size
+                                    }}
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                />
+                            </Box>
+                            <Box mb={2}>
+                                <TextField
+                                    label="Block Chain"
+                                    name="blockChainName"
+                                    value={formValues.blockChainName || ""}
+                                    InputProps={{
+                                        readOnly: true,
+                                        style: { fontSize: '13px', display: 'flex', alignItems: 'center' }, // Adjusted for icon alignment
+                                        startAdornment: (
+                                            <span style={{ marginRight: '8px', display: 'flex', alignItems: 'center' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center' }}>
+                                                    {formValues.blockChainLogo && typeof formValues.blockChainLogo === 'string' ? (
+                                                        <img
+                                                            src={formValues.blockChainLogo}
+                                                            alt=""
+                                                            style={{ width: '20px', objectFit: 'contain', marginRight: '8px' }}
+                                                        />
+                                                    ) : null}
+                                                </div>
+                                            </span>
+                                        ),
+                                    }}
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                />
+                            </Box>
+                            <Box mb={2} display="flex" alignItems="center">
+                                <TextField
+                                    label="Investor Wallet Address"
+                                    name="investorWalletAddress"
+                                    value={formValues.investorWalletAddress || ""}
+                                    InputProps={{
+                                        readOnly: true,
+                                        style: { fontSize: '13px' } // Increased border size
+                                    }}
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                />
+                                <Tooltip title="Copy Link">
+                                    <Button
+                                        type="button"
+                                        icon={<CopyOutlined />}
+                                        style={{ marginLeft: '10px' }}
+                                        onClick={() => copyToClipboard(formValues.investorWalletAddress)}
+                                    />
+                                </Tooltip>
+                            </Box>
+                            {formValues.testType == 1 ?
+                                <Box mb={2} display="flex" alignItems="center" >
+                                    <TextField
+                                        label="Fund Wallet Address"
+                                        name="fundWalletAddress"
+                                        value={formValues.fundWalletAddress || ""}
+                                        InputProps={{
+                                            readOnly: true,
+                                            style: { fontSize: '13px' } // Increased border size
+                                        }}
+                                        InputLabelProps={{
+                                            shrink: true // Ensures the label always floats on top
+                                        }}
+                                        fullWidth
+                                        variant="outlined"
+                                        size="small"
+                                    />
+                                    <Tooltip title="Copy Link">
+                                        <Button
+                                            type="button"
+                                            icon={<CopyOutlined />}
+                                            style={{ marginLeft: '10px' }}
+                                            onClick={() => copyToClipboard(formValues.fundWalletAddress)}
+                                        />
+                                    </Tooltip>
+                                </Box> : null}
+                            
+                            <Box mb={2}>
+                                <TextField
+                                    label={formValues.testType == 1 ? "Generated Amount" : "Generated Message"}
+                                    name="amount_message"
+                                    value={(formValues.testType == 1 ? formValues.amount + " (" + formValues.cryptoCurrencySymbol + ")" : formValues.message) || ""}
+                                    InputProps={{
+                                        readOnly: true,
+                                        style: { fontSize: '13px' } // Increased border size
+                                    }}
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                />
+                                <Typography
+                                    variant="body2"
+                                    style={{ color: 'black', marginTop: '5px', fontStyle: 'italic' }}
+                                >
+                                    Generated by {formValues.testInputGenerationCreatedBy || ""} at {formValues.testInputGenerationDate ? formatToTimeZone(formValues.testInputGenerationDate, timeZone) : ""} 
+                                </Typography>
+                            </Box>
+                            <Box mb={2}>
+                                <TextField
+                                    label="Investor Comments"
+                                    name="investorComments"
+                                    value={formValues.investorComments || ""}
+                                    InputProps={{
+                                        readOnly: true,
+                                        style: { fontSize: '13px' } // Increased border size
+                                    }}
+                                    InputLabelProps={{
+                                        shrink: true // Ensures the label always floats on top
+                                    }}
+                                    multiline
+                                    rows={2}
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                />
+                            </Box>
+                            
+                        </form>
+                    </div>
+
+                    {/* Vertical Separator */}
+                    <div style={{ width: '1px', backgroundColor: '#f0f0f0', paddingTop: '50px', margin: '0 0' }}></div>
+                    <Modal
+                        open={isModalVisible}
+                        style={{ minWidth: "80%" }}
+                        formId={"##AdditionalWalletTests##"}
+                        modalHeader={"Additional Wallet Details"}
+                        toggle={handleModalClose}
+                        mode={1}
+                        modalBody={
+                            <AdditionalWalletTestDetails
+                                investorWalletAddress={formValues.investorWalletAddress}
+                                investorEmail={formValues.investorEmail}
+                                walletTestID={formValues.walletTestID}
+                                count={additionalModalType == 'walletsForSameEmail' ? commonCounts.WalletCount : (additionalModalType == 'emailsForSameWalletAndFund' ? commonCounts.EmailCountForSameFund : commonCounts.EmailCount)}
+                                additionalModalType={additionalModalType}
+                                fundName={formValues.fundName}
+                                businessClientName={formValues.businessClientName}
+                                timeZone={timeZone}
+                                fundID={formValues.fundID}
+                            />
+                        }
+                        modalFooter={<div></div> }
+                    />
+
+
+
+                    {/* Right Section */}
+                    <div style={{ flex: 1, padding: '20px', paddingTop: '20px', overflowY: 'auto' }}>
+                        <form>
+                           
+                            <h6 style={{ marginBottom: '20px', fontWeight: "bolder" }}>Wallet Verification Info</h6>
+                            
+                        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center', textAlign: 'center', width: '100%' }}>  
+                           <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px', width: '100%' }}>  
+                               <Text style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.5', flex: 5, textAlign: 'left' }}>  
+                                   Additional Investor Wallets linked to the same Email ID  
+                               </Text>  
+                               <div style={{ width: '1px', margin: '0 10px' }}> : </div>  
+                               <div style={{ display: 'flex', alignItems: 'center', flex: 1, justifyContent: 'center' }}>  
+                                   <span>{commonCounts.WalletCount != null && commonCounts.WalletCount != undefined ? commonCounts.WalletCount : ''}</span>  
+                                   <Tooltip title="View Details">  
+                                       <ExportOutlined  
+                                                style={{ fontSize: '20px', marginLeft: '5px', cursor: 'pointer', color: 'rgb(12, 42, 71)' }}  
+                                           onClick={() => showModal('walletsForSameEmail')}  
+                                       />  
+                                   </Tooltip>  
+                               </div>  
+                           </div>  
+
+                           <div style={{ display: 'flex', alignItems: 'center', width: '100%', marginBottom: '20px', }}>  
+                               <Text style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.5', flex: 5, textAlign: 'left' }}>  
+                                   Additional Investor EmailIDs linked to the same Wallet Address  
+                               </Text>  
+                               <div style={{ width: '1px', margin: '0 10px' }}> : </div>  
+                               <div style={{ display: 'flex', alignItems: 'center', flex: 1, justifyContent: 'center' }}>  
+                                   <span>{commonCounts.EmailCount != null && commonCounts.EmailCount != undefined ? commonCounts.EmailCount : ''}</span>  
+                                   <Tooltip title="View Details">  
+                                       <ExportOutlined  
+                                                style={{ fontSize: '20px', marginLeft: '5px', cursor: 'pointer', color: "rgb(12, 42, 71)" }}  
+                                           onClick={() => showModal('emailsForSameWallet')}  
+                                       />  
+                                   </Tooltip>  
+                               </div>  
+                           </div>  
+                                {commonCounts && commonCounts.EmailCountForSameFund && commonCounts.EmailCountForSameFund > 0 ?
+                                    <div style={{ display: 'flex', alignItems: 'center', width: '100%', marginBottom: '20px', }}>
+                                        <Text style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.5', flex: 5, textAlign: 'left' }}>
+                                            Additional Investor EmailIDs linked to the same Wallet Address and same fund
+                                        </Text>
+                                        <div style={{ width: '1px', margin: '0 10px' }}> : </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', flex: 1, justifyContent: 'center' }}>
+                                            <span>{commonCounts.EmailCountForSameFund != null && commonCounts.EmailCountForSameFund != undefined ? commonCounts.EmailCountForSameFund : ''}</span>
+                                            <Tooltip title="View Details">
+                                                <ExportOutlined
+                                                    style={{ fontSize: '20px', marginLeft: '5px', cursor: 'pointer', color: "rgb(12, 42, 71)" }}
+                                                    onClick={() => showModal('emailsForSameWalletAndFund')}
+                                                />
+                                            </Tooltip>
+                                        </div>
+                                    </div>
+                                    : null}
+                        </div>
+                            <Box mb={2} display="flex" flexDirection="column">
+                                <Box display="flex" alignItems="center">
+                                    <TextField
+                                        label={formValues.testType == 1 ? "Transaction Hash" : "Signature Hash"}
+                                        name="testVerificationHash"
+                                        value={formValues.testVerificationHash || ""}
+                                        placeholder="Enter Transaction Hash"
+                                        onChange={handleInputChange}
+                                        fullWidth
+                                        multiline
+                                        rows={2}
+                                        variant="outlined"
+                                        size="small"
+                                        InputProps={{
+                                            readOnly: (!isExpired || formValues.walletVerificationStatusValue === "Success" || formValues.walletVerificationStatusValue === "Test Initiated" || props.editType === 'read'),
+                                            style: { fontSize: '13px' }
+                                        }}
+                                        InputLabelProps={{
+                                            shrink: true
+                                        }}
+                                    />
+                                    <Tooltip title="Copy verification hash" >
+                                        <Button
+                                            type="button"
+                                            icon={<CopyOutlined />}
+                                            style={{ marginLeft: '10px' }}
+                                            onClick={() => copyToClipboard(formValues.testVerificationHash)}
+                                        />
+                                    </Tooltip>
+                                </Box>
+                                {txnHashError && (
+                                    <Typography
+                                        variant="body2"
+                                        style={{ color: 'red', marginTop: '4px', fontStyle: 'italic', fontSize: '12px' }}
+                                    >
+                                        {txnHashError}
+                                    </Typography>
+                                )}
+                            </Box>
+                            {formValues.testType == 1 && walletVerificationBlockChains && walletVerificationBlockChains.xPubKeyRegex && (
+                                <Box mb={2} display="flex" flexDirection="column">
+                                    <Box display="flex" alignItems="center">
+                                        <TextField
+                                            label="XPUB Key"
+                                            name="xpubKey"
+                                            value={formValues.xpubKey || ""}
+                                            placeholder="Enter XPUB Key"
+                                            onChange={handleInputChange}
+                                            fullWidth
+                                            variant="outlined"
+                                            size="small"
+                                            multiline
+                                            rows={2}
+                                            InputProps={{
+                                                readOnly: !isExpired || formValues.walletVerificationStatusValue === "Success" || formValues.walletVerificationStatusValue === "Test Initiated" || props.editType === 'read',
+                                                style: { fontSize: '13px' }
+                                            }}
+                                            InputLabelProps={{
+                                                shrink: true
+                                            }}
+                                        />
+                                        <Tooltip title="Copy xpub Key">
+                                            <Button
+                                                type="button"
+                                                icon={<CopyOutlined />}
+                                                style={{ marginLeft: '10px' }}
+                                                onClick={() => copyToClipboard(formValues.xpubKey)}
+                                            />
+                                        </Tooltip>
+                                    </Box>
+                                    {xPubKeyError && (
+                                        <Typography
+                                            variant="body2"
+                                            style={{ color: 'red', marginTop: '4px', fontStyle: 'italic', fontSize: '12px' }}
+                                        >
+                                            {xPubKeyError}
+                                        </Typography>
+                                    )}
+                                </Box>
+                            )}
+                            
+                            <Box mb={2}>
+                                <Box display="flex" alignItems="center" gap={1} mb={0}>
+                                    <TextField
+                                        label="Verification Status"
+                                        name="walletVerificationStatusValue"
+                                        value={formValues.walletVerificationStatusValue || ""}
+                                        fullWidth
+                                        variant="outlined"
+                                        size="small"
+                                        InputProps={{
+                                            readOnly: true,
+                                            style: { fontSize: '13px', display: 'flex', alignItems: 'center' }, // Adjusted for icon alignment
+                                            startAdornment: (
+                                                <span style={{ marginRight: '8px', display: 'flex', alignItems: 'center' }}>
+
+                                                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                                                        {verificationStatusData
+                                                            .filter(option => option.name === formValues.walletVerificationStatusValue)
+                                                            .map((item) => (
+                                                                item['icon'] ? (
+                                                                    typeof item['icon'] === 'string' ? (
+                                                                        <img src={item['icon']} alt={item['key']} style={{ width: '20px', objectFit: 'contain', marginRight: '8px' }} />
+                                                                    ) : (
+                                                                        <span style={{ display: 'flex', alignItems: 'center', marginRight: '8px' }}>
+                                                                            {item['icon']}
+                                                                        </span>
+                                                                    )
+                                                                ) : null
+                                                            ))}
+                                                    </div>
+
+
+                                                </span>
+                                            ),
+                                        }}
+                                        InputLabelProps={{
+                                            shrink: true, // Ensures the label always floats on top
+                                        }}
+                                    />
+                                    <Tooltip
+                                        title={formValues.walletVerificationStatusValue === "Failed" || formValues.walletVerificationStatusValue === "Expired"
+                                            ? "Click to verify"
+                                            : "Verification is not available for the current status"}
+                                    >
+                                        <Button
+                                            variant="contained"
+                                            style={{
+                                                backgroundColor: (formValues.walletVerificationStatusValue === "Failed" || formValues.walletVerificationStatusValue === "Expired") ? '#1F446A' : 'rgba(0, 0, 0, 0.6)' ,
+                                                color: 'white',
+                                                alignSelf: 'center'
+                                            }}
+                                            type="button"
+                                            onClick={verifyWalletTest}
+                                            disabled={!isExpired || formValues.walletVerificationStatusValue === "Success" || formValues.walletVerificationStatusValue === "Test Initiated" || props.editType === 'read'}
+                                        >
+                                            Verify
+                                        </Button>
+                                    </Tooltip>                                                                          
+                                </Box>
+                                {formValues.walletVerificationStatusValue === "Failed" && formValues.walletVerificationMessage && (
+                                    <Tooltip title={formValues.walletVerificationMessage}>
+                                        <Typography
+                                            variant="body2"
+                                            style={{
+                                                color: 'red',
+                                                marginBottom: '4px',
+                                                fontStyle: 'italic',
+                                                fontSize: '12px',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                maxWidth: '100%',
+                                                display: 'block',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            {formValues.walletVerificationMessage}
+                                        </Typography>
+                                    </Tooltip>
+                                )}
+
+                                <Typography
+                                    variant="body2"
+                                    style={{ color: 'black', marginTop: '5px', fontStyle: 'italic' }}
+                                >
+                                    Verified by {formValues.walletVerificationStatusChangeBy} at {formValues.walletVerificationStatusChangeDate ? formatToTimeZone(formValues.walletVerificationStatusChangeDate, timeZone)  : ""}
+                                </Typography>
+                            </Box>
+
+                            <h6 style={{ marginBottom: '20px', fontWeight: "bolder" }}>AML & Test Info</h6>
+
+                                <Box display="flex" alignItems="center" gap={1} mb={0}>
+                                    <div className="floating-input-container" style={{ flex: 1, alignItems: "center", paddingBottom: '0px' }}>
+                                    <label
+                                        className="floating-label"
+                                        style={{
+                                            background: (!isExpired || !(formValues.walletVerificationStatusValue === "Success" || formValues.walletVerificationStatusValue === "Failed") || props.editType === 'read')
+                                                ? "linear-gradient(to bottom, white 50%, #f0f0f0 50%)"
+                                                : "white",
+                                        }}
+                                    >
+                                        Test Status
+                                    </label>
+                                    <CommonSelect
+                                        className="floating-dropdown ant-select-selector"
+                                        placeholder="None Selected"
+                                        value={formValues.amlTestStatus ? formValues.amlTestStatus : ''}
+                                        name="amlTestStatus"
+                                        data={amlStatusData}
+                                        dataKey={"key"}
+                                        dataLabel={"name"}
+                                        dataIcon={"icon"}
+                                        onChange={(value) => { setDropdownValue1("amlTestStatus", value); }}
+                                        style={{ width: '100%', marginBottom: '0px' }}
+                                        disabled={!isExpired || !(formValues.walletVerificationStatusValue === "Success" || formValues.walletVerificationStatusValue === "Failed") || props.editType === 'read'}
+                                    />
+                                </div> 
+                                    <div className="floating-input-container" style={{ flex: 1, alignItems: "center", paddingBottom: '0px' }}>
+                                    <label
+                                        className="floating-label"
+                                        style={{
+                                            background: (!isExpired || !(formValues.walletVerificationStatusValue === "Success" || formValues.walletVerificationStatusValue === "Failed") || props.editType === 'read')
+                                                ? "linear-gradient(to bottom, white 50%, #f0f0f0 50%)"
+                                                : "white",
+                                        }}
+                                    >AML Category</label>
+                                    <CommonSelect
+                                        className="floating-dropdown ant-select-selector"
+                                        placeholder="None Selected"
+                                        value={formValues.amlCategory ? formValues.amlCategory : ''}
+                                        data={amlCategoryData}
+                                        dataKey={"key"}
+                                        dataLabel={"name"}
+                                        dataIcon={"icon"}
+                                        name="amlCategory"
+                                        onChange={(value) => { setDropdownValue1("amlCategory", value); }}
+                                        style={{ width: '100%', marginBottom: '0px' }}
+                                        disabled={!isExpired || !(formValues.walletVerificationStatusValue === "Success" || formValues.walletVerificationStatusValue === "Failed") || props.editType === 'read'}
+                                    />
+                                </div>                                   
+                            </Box>
+
+                            {amlStatusError && (
+                                <Box mb={2}>
+
+                                    <Typography
+                                        variant="body2"
+                                        style={{
+                                            color: 'red',
+                                            marginBottom: '4px',
+                                            fontStyle: 'italic',
+                                            fontSize: '12px', // Adjusted font size for better alignment
+                                        }}
+                                    >
+                                        {amlStatusError}
+                                    </Typography>
+                                </Box>
+                            )}
+                                                
+                            <Box display="flex" gap={2} mb={2}> 
+                                <div className="floating-input-container" style={{ flex: 1}}>
+                                    <label
+                                        className="floating-label"
+                                        style={{
+                                            background: (!isExpired || !(formValues.walletVerificationStatusValue === "Success" || formValues.walletVerificationStatusValue === "Failed") || props.editType === 'read')
+                                                ? "linear-gradient(to bottom, white 50%, #f0f0f0 50%)"
+                                                : "white",
+                                        }}
+                                    >Mail Status</label>
+                                    <CommonSelect
+                                        className="floating-dropdown"
+                                        placeholder='None Selected'
+                                        value={formValues.mailStatus} // Ensure a default value is provided
+                                        data={mailStatusData}
+                                        allowClear={false}
+                                        dataKey={"key"}
+                                        dataLabel={"name"}
+                                        dataIcon={"icon"}
+                                        name="mailStatus"
+                                        onChange={(value) => { setDropdownValue1("mailStatus", value) }} // Corrected parameter order
+                                        style={{ width: '100%', height: '40px' }} // Adjusted height to match other input fields
+                                        disabled={!isExpired || !(formValues.walletVerificationStatusValue == "Success" || formValues.walletVerificationStatusValue == "Failed") || props.editType === 'read'}
+                                    />
+                                </div>
+                                <TextField
+                                    style={{ flex: 1, height: '40px' }} // Adjusted height to match other input fields
+                                    label="Mail Sent at"
+                                    name="mailSentDate"
+                                    disabled={true}
+                                    value={formValues.mailSentDate ? formatToTimeZone(new Date(formValues.mailSentDate), timeZone)  : ""}
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                    InputProps={{
+                                        readOnly: !isExpired || props.editType === 'read',
+                                        style: { fontSize: '13px' } // Increased border size
+                                    }}
+                                    InputLabelProps={{
+                                        shrink: true // Ensures the label always floats on top
+                                    }}
+                                />
+                            </Box>  
+                            
+                            <Box mb={2}>
+                                <TextField
+                                    label="TPS Ticket ID"
+                                    name="tpsTicketID"
+                                    type="number"
+                                    value={formValues.tpsTicketID || ''}
+                                    placeholder="Enter TPS Ticket ID"
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                    onChange={handleInputChange}
+                                    InputProps={{
+                                        readOnly: props.editType === 'read',
+                                        style: { fontSize: '13px' } // Increased border size
+                                    }}
+                                    InputLabelProps={{
+                                        shrink: true // Ensures the label always floats on top
+                                    }}
+                                />
+                            </Box>
+                            <Box mb={2}>
+                                <TextField
+                                    label="RTA Comments"
+                                    name="comments"
+                                    value={formValues.comments || ""}
+                                    placeholder="Comments"
+                                    onChange={handleInputChange}
+                                    multiline
+                                    rows={2}
+                                    fullWidth
+                                    variant="outlined"
+                                    size="small"
+                                    InputProps={{
+                                        readOnly: props.editType === 'read',
+                                        style: { fontSize: '13px' } // Increased border size
+                                    }}
+                                    InputLabelProps={{
+                                        shrink: true // Ensures the label always floats on top
+                                    }}
+                                />
+                            </Box>
+                        </form>
+                        {/* Bottom Section for Buttons */}
+
+                        {props.editType === 'edit' ?
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignContent: 'flex-end', marginTop: '20px' }}>
+                            <Button
+                                onClick={props.onClose}
+                                style={{
+                                    color: '#1F446A',
+                                    border: '1px solid #1F446A',
+                                    backgroundColor: 'white',
+                                    marginRight: '10px'
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                variant="contained"
+                                color="primary"
+                                style={{
+                                    backgroundColor: '#1F446A',
+                                    color: 'white'
+                                }}
+                                onClick={saveWalletTestDetails}
+                            >
+                                Save
+                            </Button>
+                        </div> : null}
+                    </div>
+                </div>
+            </Drawer>
+
+            <div>
+                <Modal1
+                    title={
+                        <span className="modal-title">
+                            <ExclamationCircleFilled
+                                className="modal-icon"
+                            />
+                            Error
+                        </span>
+                    }
+                    open={showRefreshModal}
+                    onOk={() => {
+
+                        updateForm()
+                        setShowRefreshModal(false);
+                        setLoading(false);
+                    }}
+                    onCancel={() => setShowRefreshModal(false)}
+                    okText="Refresh"
+                    okButtonProps={{ style: { backgroundColor: "#1F446A" } }}
+                >
+                    <p>{refreshModalMessage}<br /> In order to proceed further, kindly refresh the form.</p>
+                </Modal1>
+            </div>
+
+            {loading && (
+               <div style={{
+                   position: 'absolute', // Changed to 'absolute' to ensure it overlays the drawer
+                   top: 0, // Aligns the spinner to the top of the drawer
+                   left: 0,
+                   zIndex: 2000, // Increased zIndex to ensure it appears above the drawer content
+                   width: '100%', // Ensures it covers the full width of the drawer
+                   height: '100%', // Ensures it covers the full height of the drawer
+                   backgroundColor: 'rgba(255, 255, 255, 0.8)', // Added a semi-transparent background
+                   display: 'flex',
+                   justifyContent: 'center',
+                   alignItems: 'center',
+               }}>
+                   <Spin indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />} />
+               </div>
+            )}
+
+        </div>
+    );
+};
+
+function mapStateToProps(state) {
+    
+    return { }
+}
+export default connect(mapStateToProps)(withAlert()(AddEditWalletTest));
+
+
