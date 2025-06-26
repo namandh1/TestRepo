@@ -1,77 +1,89 @@
-{
-    field: 'walletAddress',
-    headerName: 'Wallet Address',
-    initialWidth: 350,
-    headerTooltip: 'Wallet Address',
-    cellRenderer: (params) => {
-        const hasAdditionalFunds = params.data.hasAdditionalFunds;
-        
-        const handleIconClick = () => {
-            if (!hasAdditionalFunds) return;
-            
-            // Fetch and show modal data
-            genericGetData({
-                dispatch: props.dispatch,
-                url: `api/walletverificationapi/GetAdditionalFundsForWalletConfiguration?walletAddress=${params.data.walletAddress}&fundId=${row.fundID}`,
-                successCb: (data) => {
-                    if (data && data.data && data.data.length > 0) {
-                        const filteredData = data.data.map(item => ({
-                            businessClientRelationshipReportingName: item.businessClientRelationshipReportingName,
-                            clientName: item.clientName
-                        }));
-                        setModalData(filteredData);
-                        setCurrentWalletAddress(params.data.walletAddress);
-                        setModalLoading(false);
-                        setModalVisible(true);
-                    }
-                },
-                errorCb: (err) => {
-                    props.alert.error('Failed to fetch additional funds data');
-                }
-            });
-        };
+{/* Scrollable top section */}
+<div style={{ 
+    flexShrink: 0, 
+    maxHeight: '40vh', // Limit height to 40% of viewport
+    overflowY: 'auto',
+    paddingRight: '8px', // Add some padding for scrollbar
+    marginBottom: '12px'
+}}>
+    {/* BusinessClients and Funds Filter */}
+    <div style={{ display: 'flex', gap: '20px', marginBottom: '12px' }}>
+        {/* ... existing content ... */}
+    </div>
 
-        const getTooltip = () => {
-            return hasAdditionalFunds 
-                ? 'View additional funds for this wallet' 
-                : 'No additional funds available for this wallet';
-        };
+    {/* Verification Link Display and inactive/active verification link switch */}
+    <div style={{ display: 'flex', gap: '20px', marginBottom: '10px' }}>
+        {/* ... existing content ... */}
+    </div>
 
-        return (
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
+    {/* Comments section */}
+    <div style={{ marginBottom: '10px' }}>
+        <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Comments</div>
+        <Input.TextArea
+            value={fundComments}
+            onChange={(e) => setFundComments(e.target.value)}
+            rows={2}
+            style={{ 
                 width: '100%',
-                height: '100%',
-                padding: '0 8px'
-            }}>
-                <span style={{
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    flex: 1,
-                    marginRight: '8px'
-                }}>
-                    {params.data.walletAddress}
-                </span>
-                <Tooltip title={getTooltip()}>
-                    <ExportOutlined
-                        style={{
-                            color: hasAdditionalFunds ? '#1890ff' : '#d9d9d9',
-                            cursor: hasAdditionalFunds ? 'pointer' : 'not-allowed',
-                            fontSize: '14px',
-                            flexShrink: 0
-                        }}
-                        onClick={handleIconClick}
-                    />
-                </Tooltip>
-            </div>
-        );
-    },
-    cellStyle: {
-        padding: 0,
-        display: 'flex',
-        alignItems: 'center'
-    }
-}
+                minHeight: '60px', // Set minimum height
+                maxHeight: '120px', // Set maximum height
+                resize: 'vertical' // Allow only vertical resize
+            }}
+            allowClear={true}
+        />
+    </div>
+</div>
+
+{/* Add Configuration button */}
+<div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px', flexShrink: 0 }}>
+    {/* ... existing button ... */}
+</div>
+
+{/* Table container with fixed height */}
+<div style={{ 
+    flex: 1, 
+    minHeight: '300px', // Minimum height for table
+    position: 'relative',
+    marginBottom: '12px'
+}}>
+    {loading && (
+        {/* ... existing loading spinner ... */}
+    )}
+
+    <div className="ag-theme-alpine rounded-grid" style={{ 
+        height: '100%', 
+        width: '100%' 
+    }}>
+        {/* ... existing AgGridReact ... */}
+    </div>
+</div>
+
+{/* Fixed footer */}
+<div style={{
+    flexShrink: 0,
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '12px',
+    padding: '16px',
+    borderTop: '1px solid #e5e7eb',
+    backgroundColor: '#f9fafb'
+}}>
+    {/* ... existing buttons ... */}
+</div>
+
+
+
+
+
+
+<Drawer
+    // ... other props ...
+    style={{
+        marginTop: '40px'
+    }}
+    bodyStyle={{
+        padding: 0, // Remove default padding since we're handling it in the inner div
+        height: '100%',
+        overflow: 'hidden' // Prevent the drawer body from scrolling
+    }}
+>
