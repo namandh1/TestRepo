@@ -10,6 +10,15 @@ import CommonSelect from "../../../Global/UIComponents/CommonSelect";
 import genericGetData from "../../../Redux/Actions/genericGetData";
 import genericPostData from "../../../Redux/Actions/genericPostData";
 
+const styles = `
+	.ag-theme-alpine .ag-cell {
+		padding: 2px 4px !important;
+	}
+	.ag-theme-alpine .ag-header-cell {
+		padding: 2px 4px !important;
+	}
+`;
+
 
 function EditWalletConfiguration(props) {
 
@@ -650,7 +659,10 @@ function EditWalletConfiguration(props) {
 						<Input
 							value={params.data.chainName}
 							disabled={true}
-							style={params.data.action === 'U' && params.data.status === 2 ? { height: '20px' } : {}}
+							style={{
+								margin: 0,
+								...params.data.action === 'U' && params.data.status === 2 ? { height: '20px' } : {}
+							}}
 						/>
 					);
 				}
@@ -1055,6 +1067,7 @@ function EditWalletConfiguration(props) {
 
 	return (
 		<>
+			<style>{styles}</style>
 			<Drawer
 				title={
 					<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
