@@ -1,6 +1,6 @@
-import { CopyOutlined, QuestionCircleFilled } from '@ant-design/icons';
+import { CopyOutlined, QuestionCircleFilled, ExportOutlined } from '@ant-design/icons';
 import { AgGridReact } from 'ag-grid-react';
-import { Button, Checkbox, Drawer, Input, message, Switch, Tooltip } from "antd";
+import { Button, Checkbox, Drawer, Input, message, Switch, Tooltip, Modal, Table } from "antd";
 import _get from "lodash/get";
 import moment from 'moment';
 import React, { useEffect, useMemo, useState } from "react";
@@ -20,6 +20,10 @@ function ApproveWalletConfiguration(props) {
 	const [showLinkCheckbox, setShowLinkCheckbox] = useState(false);
 	const [linkData, setLinkData] = useState(null);
 	const [comments, setComments] = useState('');
+	const [modalVisible, setModalVisible] = useState(false);
+	const [modalData, setModalData] = useState([]);
+	const [modalLoading, setModalLoading] = useState(false);
+	const [currentWalletAddress, setCurrentWalletAddress] = useState('');
 	
 	const onClose = () => {
 		setShowLinkCheckbox(false);
@@ -253,7 +257,84 @@ function ApproveWalletConfiguration(props) {
 			field: 'walletAddress',
 			headerName: 'Wallet Address',
 			initialWidth: 350,
-			headerTooltip: 'Wallet Address'
+			headerTooltip: 'Wallet Address',
+			cellRenderer: (params) => {
+				const [iconState, setIconState] = useState('default');
+
+				const handleIconClick = () => {
+					if (iconState === 'disabled') return;
+
+					// Check data availability first
+					genericGetData({
+						dispatch: props.dispatch,
+						url: `api/walletverificationapi/GetAdditionalFundsForWalletConfiguration?walletAddress=${params.data.walletAddress}&fundId=${row.fundID}`,
+						successCb: (data) => {
+							if (data && data.data && data.data.length > 0) {
+								setIconState('enabled');
+								// Open modal with data
+								const filteredData = data.data.map(item => ({
+									businessClientRelationshipReportingName: item.businessClientRelationshipReportingName,
+									clientName: item.clientName
+								}));
+								setModalData(filteredData);
+								setCurrentWalletAddress(params.data.walletAddress);
+								setModalLoading(false);
+								setModalVisible(true);
+							} else {
+								setIconState('disabled');
+							}
+						},
+						errorCb: (err) => {
+							setIconState('disabled');
+						}
+					});
+				};
+
+				const getTooltip = () => {
+					switch (iconState) {
+						case 'disabled': return 'No additional funds available for this wallet';
+						case 'enabled': return 'View additional funds for this wallet';
+						default: return 'Click to check additional funds for this wallet';
+					}
+				};
+
+				return (
+					<div style={{
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+						width: '100%',
+						height: '100%',
+						padding: '0 8px'
+					}}>
+						<span style={{
+							overflow: 'hidden',
+							textOverflow: 'ellipsis',
+							whiteSpace: 'nowrap',
+							flex: 1,
+							marginRight: '8px'
+						}}>
+							{params.data.walletAddress}
+						</span>
+						<Tooltip title={getTooltip()}>
+							<ExportOutlined
+								style={{
+									color: iconState === 'disabled' ? '#d9d9d9' : '#1890ff',
+									cursor: iconState === 'disabled' ? 'not-allowed' : 'pointer',
+									fontSize: '14px',
+									flexShrink: 0
+								}}
+								onClick={handleIconClick}
+							/>
+						</Tooltip>
+					</div>
+				);
+			},
+			cellStyle: {
+				padding: 0,
+				display: 'flex',
+				alignItems: 'center'
+			}
 		},
 		{
 			field: 'isActive',
@@ -365,6 +446,30 @@ function ApproveWalletConfiguration(props) {
 		}
 		return null;
 	};
+
+	const fetchAdditionalFunds = (walletAddress) => {
+		genericGetData({
+			dispatch: props.dispatch,
+			url: `api/walletverificationapi/GetAdditionalFundsForWalletConfiguration?walletAddress=${walletAddress}&fundId=${row.fundID}`,
+			successCb: (data) => {
+				if (data && data.data && data.data.length > 0) {
+					// Only open modal if there's data
+					const filteredData = data.data.map(item => ({
+						businessClientRelationshipReportingName: item.businessClientRelationshipReportingName,
+						clientName: item.clientName
+					}));
+					setModalData(filteredData);
+					setCurrentWalletAddress(walletAddress);
+					setModalLoading(false);
+					setModalVisible(true);
+				}
+			},
+			errorCb: (err) => {
+				props.alert.error('Failed to fetch additional funds data');
+			}
+		});
+	};
+
 
 	return (
 		<>
@@ -484,6 +589,7 @@ function ApproveWalletConfiguration(props) {
 								<Input
 									value={comments}
 									style={{ width: '100%' }}
+									rows={2}
 									readOnly
 									/>
 							</Tooltip>
@@ -549,6 +655,43 @@ function ApproveWalletConfiguration(props) {
 					</div>
 				</div>
 			</Drawer>
+
+			{/* Modal for Additional Funds */}
+			<Modal
+				title={`Additional Funds for Wallet: ${currentWalletAddress}`}
+				open={modalVisible}
+				onCancel={() => setModalVisible(false)}
+				footer={[
+					<Button key="close" onClick={() => setModalVisible(false)}>
+						Close
+					</Button>
+				]}
+				width={600}
+			>
+				<Table
+					dataSource={modalData}
+					loading={modalLoading}
+					pagination={false}
+					size="small"
+					scroll={{ y: 300 }}
+					locale={{ emptyText: 'No additional funds found for this wallet address' }}
+					columns={[
+						{
+							title: 'Business Client Name',
+							dataIndex: 'businessClientRelationshipReportingName',
+							key: 'businessClientRelationshipReportingName',
+							width: '50%'
+						},
+						{
+							title: 'Client Name',
+							dataIndex: 'clientName',
+							key: 'clientName',
+							width: '50%'
+						}
+					]}
+				/>
+			</Modal>
+
 		</>
 	);
 }
