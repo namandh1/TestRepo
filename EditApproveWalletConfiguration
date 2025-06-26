@@ -710,46 +710,6 @@ function EditWalletConfiguration(props) {
 				);
 			}
 		},
-		//{
-		//	field: 'walletAddress',
-		//	headerName: 'Wallet Address',
-		//	initialWidth: 390,
-		//	headerTooltip: 'Wallet Address',
-		//	cellRenderer: (params) => {
-		//		// Determine if wallet address should be disabled
-		//		const isDisabled = !isCellEditable(params.data, 'walletAddress');
-
-		//		// Create a ref to maintain focus
-		//		const inputRef = React.useRef(null);
-
-		//		// Keep track of local state for the input value
-		//		const [inputValue, setInputValue] = React.useState(params.value);
-
-		//		// Handle local changes without triggering grid refresh
-		//		const handleLocalChange = (e) => {
-		//			setInputValue(e.target.value);
-		//		};
-
-		//		// Only update the actual data when the input loses focus
-		//		const handleBlur = () => {
-		//			handleCellEdit(params.data, 'walletAddress', inputValue);
-		//		};
-
-		//		return (
-		//			<Input
-		//				ref={inputRef}
-		//				type="text"
-		//				value={inputValue}
-		//				onChange={handleLocalChange}
-		//				onBlur={handleBlur}
-		//				disabled={isDisabled}
-		//				style={params.data.action === 'U' && params.data.status === 2 ? { height: '20px' } : {}}
-		//				status={failedRegexConfig.includes(params.data.configurationID) ? "error" : null}
-		//				allowClear={true}
-		//			/>
-		//		);
-		//	}
-		//},
 		{
 			field: 'walletAddress',
 			headerName: 'Wallet Address',
@@ -785,7 +745,12 @@ function EditWalletConfiguration(props) {
 				const isIconDisabled = hasNoFunds;
 
 				return (
-					<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+					<div style={{
+						position: 'relative',
+						height: '100%',
+						display: 'flex',
+						alignItems: 'center'
+					}}>
 						<Input
 							ref={inputRef}
 							type="text"
@@ -801,7 +766,7 @@ function EditWalletConfiguration(props) {
 							allowClear={true}
 						/>
 						{showIcon && (
-							<Tooltip title={isIconDisabled ? "No additional funds found for this wallet address" : "Additional Funds for Wallet Address"}>
+							<Tooltip title={isIconDisabled ? "No additional funds for this wallet" : "View additional funds for wallet"}>
 								<Button
 									type="text"
 									size="small"
@@ -809,7 +774,9 @@ function EditWalletConfiguration(props) {
 									onClick={() => !isIconDisabled && fetchAdditionalFunds(inputValue)}
 									loading={additionalFundsLoading && selectedWalletAddress === inputValue}
 									disabled={isIconDisabled}
-									style={{ padding: '4px' }}
+									style={{
+										padding: '4px',
+									}}
 								/>
 							</Tooltip>
 						)}
@@ -833,7 +800,7 @@ function EditWalletConfiguration(props) {
 		{
 			field: 'comments',
 			headerName: 'Comments',
-			initialWidth: 170,
+			initialWidth: 230,
 			headerTooltip: 'Comments',
 			cellRenderer: (params) => {
 				// Determine if comments should be disabled
@@ -856,16 +823,18 @@ function EditWalletConfiguration(props) {
 				};
 
 				return (
-					<Input
-						ref={inputRef}
-						type="text"
-						value={inputValue}
-						onChange={handleLocalChange}
-						onBlur={handleBlur}
-						disabled={isDisabled}
-						style={params.data.action === 'U' && params.data.status === 2 ? { height: '20px' } : {}}
-						allowClear={true}
-					/>
+					<Tooltip title={inputValue} placement='topLeft'>
+						<Input
+							ref={inputRef}
+							type="text"
+							value={inputValue}
+							onChange={handleLocalChange}
+							onBlur={handleBlur}
+							disabled={isDisabled}
+							style={params.data.action === 'U' && params.data.status === 2 ? { height: '20px' } : {}}
+							allowClear={true}
+						/>
+					</Tooltip>
 				);
 			}
 		},
@@ -896,6 +865,7 @@ function EditWalletConfiguration(props) {
 			headerTooltip: 'Action',
 			flex: 1.2,
 			cellRenderer: handleActionStatus,
+			pinned: "right"
 		}
 	];
 
