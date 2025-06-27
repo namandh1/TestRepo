@@ -66,10 +66,10 @@ function EditWalletConfiguration(props) {
 			}
 			else if (p.data.status === 3) {
 				if (p.data.action === "U") {
-					backgroundColor = "#DBE9FA" // blue
+					backgroundColor = "#A6C0E1" // blue
 				}
 				else if (p.data.action === "I") {
-					backgroundColor = "#AFE1AF" // green
+					backgroundColor = "#91DD91" // green
 				}
 			}
 			else if (p.data.status === 2) {
@@ -611,7 +611,7 @@ function EditWalletConfiguration(props) {
 		// Hide delete button for rows with status = 2 (Approved)
 		const showDeleteButton = data.data.status !== 2 || (data.data.status == 2 && data.data.action !== null && data.data.action !== 'U');
 		const showUndoButton = (showDeleteButton) || data.data.configStatus == 'deleted' || data.data.configStatus == 'edited'
-		console.log("in handleactionstatus: ", data);
+		//console.log("in handleactionstatus: ", data);
 		return (
 			<Space>
 				{/* Undo button */}
@@ -621,7 +621,7 @@ function EditWalletConfiguration(props) {
 							type="text"
 							size="small"
 							icon={<UndoOutlined style={{ fontSize: '17px', marginRight: "3px" }} />}
-							onClick={() => { onClickUndoButton(data) }}
+							onMouseDown={() => { onClickUndoButton(data) }}
 						/>
 					</Tooltip>}
 				{/* Delete button */}
@@ -631,7 +631,7 @@ function EditWalletConfiguration(props) {
 							type="text"
 							size="small"
 							icon={<DeleteOutlined style={{ fontSize: '17px' }} />}
-							onClick={() => { onClickDeleteButton(data) }}
+							onMouseDown={() => { onClickDeleteButton(data) }}
 						/>
 					</Tooltip>
 				)}
