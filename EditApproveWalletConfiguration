@@ -19,7 +19,6 @@ const styles = `
 	}
 `;
 
-
 function EditWalletConfiguration(props) {
 
 	const { open, setOpen, row } = props;
@@ -40,7 +39,6 @@ function EditWalletConfiguration(props) {
 	const [additionalFundsData, setAdditionalFundsData] = useState([]);
 	const [additionalFundsLoading, setAdditionalFundsLoading] = useState(false);
 	const [selectedWalletAddress, setSelectedWalletAddress] = useState('');
-	const [walletAddressesWithNoFunds, setWalletAddressesWithNoFunds] = useState(new Set());
 
 
 	const onGridReady = (params) => {
@@ -235,7 +233,7 @@ function EditWalletConfiguration(props) {
 				dispatch: props.dispatch,
 				url: `api/walletverificationapi/GetFundWalletVerificationLinkStatus?fundId=${row.fundID}`,
 				successCb: (data) => {
-					console.log("data is: ", data);
+					//console.log("data is: ", data);
 					setVerificationLinkStatus(data.data[0].isActive);
 					setOriginalVerificationLinkStatus(data.data[0].isActive);
 					setLinkStatusValue(data.data[0].status);
@@ -317,7 +315,8 @@ function EditWalletConfiguration(props) {
 								resolve({
 									...config,
 									availableCurrencies: currencies,
-									currencySymbol: currencyName
+									currencySymbol: currencyName,
+									countAdditionalFunds: config.countAdditionalFunds || 0
 								});
 							});
 						} else {
@@ -381,6 +380,7 @@ function EditWalletConfiguration(props) {
 	};
 
 	var onClickUndoButton = (data_old) => {
+		console.log("undo clicked: ", data_old)
 		const data = data_old.data;
 		
 		// Use setTimeout to defer the state update until after the current render cycle
@@ -611,6 +611,7 @@ function EditWalletConfiguration(props) {
 		// Hide delete button for rows with status = 2 (Approved)
 		const showDeleteButton = data.data.status !== 2 || (data.data.status == 2 && data.data.action !== null && data.data.action !== 'U');
 		const showUndoButton = (showDeleteButton) || data.data.configStatus == 'deleted' || data.data.configStatus == 'edited'
+		console.log("in handleactionstatus: ", data);
 		return (
 			<Space>
 				{/* Undo button */}
@@ -745,16 +746,11 @@ function EditWalletConfiguration(props) {
 				// Only update the actual data when the input loses focus
 				const handleBlur = () => {
 					handleCellEdit(params.data, 'walletAddress', inputValue);
-					// Check for additional funds when user finishes editing
-					if (inputValue && inputValue.trim().length > 0) {
-						checkAdditionalFunds(inputValue.trim());
-					}
 				};
 
 				// Check if wallet address exists and is valid for showing the icon
 				const showIcon = inputValue && inputValue.trim().length > 30;
-				const hasNoFunds = walletAddressesWithNoFunds.has(inputValue && inputValue.trim());
-				const isIconDisabled = hasNoFunds;
+				const isIconDisabled = !params.data.countAdditionalFunds || params.data.countAdditionalFunds === 0;
 
 				return (
 					<div style={{
@@ -796,7 +792,6 @@ function EditWalletConfiguration(props) {
 				);
 			}
 		},
-
 		{
 			field: 'isActive',
 			headerName: 'Is Active',
@@ -896,6 +891,7 @@ function EditWalletConfiguration(props) {
 	}), []);
 
 	const onClose = () => {
+		setOpen(false);
 		setVerificationLinkStatus(null);
 		setRowData(null);
 		setOriginalConfigData(null);
@@ -904,7 +900,6 @@ function EditWalletConfiguration(props) {
 		setAdditionalFundsModal(false);
 		setAdditionalFundsData([]);
 		setSelectedWalletAddress('');
-		setOpen(false);
 	};
 
 	const onChange = checked => {
@@ -1016,47 +1011,8 @@ function EditWalletConfiguration(props) {
 			successCb: (data) => {
 				const fundsData = data.data || [];
 				setAdditionalFundsData(fundsData);
-				if (fundsData.length === 0) {
-					setWalletAddressesWithNoFunds(prev => new Set([...prev, walletAddress]));
-				} else {
-					// Remove from no-funds set if data exists
-					setWalletAddressesWithNoFunds(prev => {
-						const newSet = new Set(prev);
-						newSet.delete(walletAddress);
-						return newSet;
-					});
-					setAdditionalFundsModal(true);
-				}
+				setAdditionalFundsModal(true);
 				setAdditionalFundsLoading(false);
-			},
-			errorCb: (err) => {
-				props.alert.error('Failed to fetch additional funds data');
-				setAdditionalFundsLoading(false);
-			}
-		});
-	};
-
-	const checkAdditionalFunds = (walletAddress) => {
-		if (!walletAddress || walletAddress.trim().length === 0) return;
-
-		// Don't check again if we already know this address has no funds
-		if (walletAddressesWithNoFunds.has(walletAddress)) return;
-
-		genericGetData({
-			dispatch: props.dispatch,
-			url: `api/walletverificationapi/GetAdditionalFundsForWalletConfiguration?walletAddress=${walletAddress}&fundId=${row.fundID}`,
-			dontshowmessage: true,
-			successCb: (data) => {
-				const fundsData = data.data || [];
-				if (fundsData.length === 0) {
-					setWalletAddressesWithNoFunds(prev => new Set([...prev, walletAddress]));
-				} else {
-					setWalletAddressesWithNoFunds(prev => {
-						const newSet = new Set(prev);
-						newSet.delete(walletAddress);
-						return newSet;
-					});
-				}
 			},
 			errorCb: (err) => {
 				props.alert.error('Failed to fetch additional funds data');
@@ -1090,84 +1046,103 @@ function EditWalletConfiguration(props) {
 					zIndex: 1000
 				}}
 				style={{
-					marginTop: '40px'  // Add margin to the entire drawer
+					marginTop: '40px'
+				}}
+				bodyStyle={{
+					padding: 0,
+					height: '100%',
+					overflow: 'hidden'
 				}}
 				closable={false}
 			>
-				<div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '0px 16px 16px 16px' }}>
-					{/* BusinessClients and Funds Filter */}
-					<div style={{ display: 'flex', gap: '20px', marginBottom: '12px' }}>
-						<div style={{ flex: 1 }}>
-							<div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Client</div>
-							<Tooltip title={row && row.businessClientName ? row.businessClientName : ''}>
-								<Input
-									placeholder='Client'
-									value={row && row.businessClientName ? row.businessClientName : ''}
-									style={{ width: '100%' }}
-									readOnly
-								/>
-							</Tooltip>
-						</div>
-
-						<div style={{ flex: 1 }}>
-							<div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Fund</div>
-							<Tooltip title={row && row.fundName ? row.fundName : ''}>
-								<Input
-									placeholder='Fund'
-									value={row && row.fundName ? row.fundName : ''}
-									style={{ width: '100%' }}
-									readOnly
-								/>
-							</Tooltip>
-						</div>
-					</div>
-
-					{/* Verification Link Display and inactive/active verification link switch */}
-					<div style={{ display: 'flex', gap: '20px', marginBottom: '10px' }}>
-						<div style={{ flex: 3 }}>
-							<div style={{ fontWeight: 'bold', marginBottom: '8px' }} >Verification Link</div>
-							<div style={{ display: 'flex' }}>
-								<Tooltip title={row && row.verificationLink ? row.verificationLink : ''}>
+				<div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', padding: '0px 16px 16px 16px' }}>
+					<div style={{
+						flexShrink: 0,
+						maxHeight: '40vh',
+						overflowY: 'auto',
+						paddingRight: '8px',
+						marginBottom: '12px'
+					}}>
+						{/* BusinessClients and Funds Filter */}
+						<div style={{ display: 'flex', gap: '20px', marginBottom: '12px' }}>
+							<div style={{ flex: 1 }}>
+								<div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Client</div>
+								<Tooltip title={row && row.businessClientName ? row.businessClientName : ''}>
 									<Input
-										placeholder='Verification Link'
-										value={row && row.verificationLink ? row.verificationLink : ''}
+										placeholder='Client'
+										value={row && row.businessClientName ? row.businessClientName : ''}
 										style={{ width: '100%' }}
 										readOnly
-										suffix={<Button
-											type="small"
-											icon={<CopyOutlined />}
-											onClick={() => copyToClipboard(row && row.verificationLink ? row.verificationLink : '')}
-										/>}
 									/>
 								</Tooltip>
+							</div>
 
+							<div style={{ flex: 1 }}>
+								<div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Fund</div>
+								<Tooltip title={row && row.fundName ? row.fundName : ''}>
+									<Input
+										placeholder='Fund'
+										value={row && row.fundName ? row.fundName : ''}
+										style={{ width: '100%' }}
+										readOnly
+									/>
+								</Tooltip>
 							</div>
 						</div>
-						<div>
-							<div>
-								<div
-									style={{ fontWeight: 'bold' }}
-								>Link Status</div>
+
+						{/* Verification Link Display and inactive/active verification link switch */}
+						<div style={{ display: 'flex', gap: '20px', marginBottom: '10px' }}>
+							<div style={{ flex: 3 }}>
+								<div style={{ fontWeight: 'bold', marginBottom: '8px' }} >Verification Link</div>
+								<div style={{ display: 'flex' }}>
+									<Tooltip title={row && row.verificationLink ? row.verificationLink : ''}>
+										<Input
+											placeholder='Verification Link'
+											value={row && row.verificationLink ? row.verificationLink : ''}
+											style={{ width: '100%' }}
+											readOnly
+											suffix={<Button
+												type="small"
+												icon={<CopyOutlined />}
+												onClick={() => copyToClipboard(row && row.verificationLink ? row.verificationLink : '')}
+											/>}
+										/>
+									</Tooltip>
+
+								</div>
 							</div>
 							<div>
-								<Switch
-									checked={verificationLinkStatus}
-									onChange={onChange}
-									style={{ marginTop: '10px' }}
-								/>
+								<div>
+									<div
+										style={{ fontWeight: 'bold' }}
+									>Link Status</div>
+								</div>
+								<div>
+									<Switch
+										checked={verificationLinkStatus}
+										onChange={onChange}
+										style={{ marginTop: '10px' }}
+									/>
+								</div>
 							</div>
 						</div>
-					</div>
 
-					<div style={{ marginBottom: '10px' }}>
-						<div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Comments</div>
-						<Input.TextArea
-							value={fundComments}
-							onChange={(e) => setFundComments(e.target.value)}
-							rows={2}
-							style={{ width: '100%' }}
-							allowClear={true}
+						{/* Comments section */}
+						<div style={{ marginBottom: '10px' }}>
+							<div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Comments</div>
+							<Input.TextArea
+								value={fundComments}
+								onChange={(e) => setFundComments(e.target.value)}
+								autoSize={{
+									minRows: 2,
+									maxRows: 6
+								}}
+								style={{
+									width: '100%'
+								}}
+								allowClear={true}
 							/>
+						</div>
 					</div>
 
 					{/* Table with 7 columns and Add new Row button */}
@@ -1264,6 +1239,7 @@ function EditWalletConfiguration(props) {
 					</div>
 				</div>
 			</Drawer>
+
 			<Modal
 				title={`Additional Funds for Wallet Address: ${selectedWalletAddress}`}
 				open={additionalFundsModal}
@@ -1274,12 +1250,14 @@ function EditWalletConfiguration(props) {
 					</Button>
 				]}
 				width={600}
+
 			>
 				<Table
 					dataSource={additionalFundsData}
 					loading={additionalFundsLoading}
 					pagination={false}
 					size="small"
+					scroll={{ y: 300 }}
 					locale={{
 						emptyText: 'No additional funds found for this wallet address'
 					}}
