@@ -1,4 +1,4 @@
-// Solution: Combine onMouseDown with preventDefault and stopPropagation
+// Alternative solution: Force blur any active cell before executing undo
 var handleActionStatus = (data) => {
 	// Hide delete button for rows with status = 2 (Approved)
 	const showDeleteButton = data.data.status !== 2 || (data.data.status == 2 && data.data.action !== null && data.data.action !== 'U');
@@ -7,19 +7,40 @@ var handleActionStatus = (data) => {
 	const handleUndoMouseDown = (e) => {
 		e.preventDefault();
 		e.stopPropagation();
-		onClickUndoButton(data);
+		
+		// Force blur any active input in the grid
+		if (gridApi) {
+			// Stop any current editing
+			gridApi.stopEditing();
+			// Force focus away from any input elements
+			const activeElement = document.activeElement;
+			if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+				activeElement.blur();
+			}
+		}
+		
+		// Execute undo after ensuring no input is focused
+		setTimeout(() => {
+			onClickUndoButton(data);
+		}, 0);
 	};
 
 	const handleDeleteMouseDown = (e) => {
 		e.preventDefault();
 		e.stopPropagation();
-		onClickDeleteButton(data);
-	};
-
-	// Also prevent the onClick event to avoid any double-firing
-	const preventClick = (e) => {
-		e.preventDefault();
-		e.stopPropagation();
+		
+		// Force blur any active input in the grid
+		if (gridApi) {
+			gridApi.stopEditing();
+			const activeElement = document.activeElement;
+			if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+				activeElement.blur();
+			}
+		}
+		
+		setTimeout(() => {
+			onClickDeleteButton(data);
+		}, 0);
 	};
 
 	console.log("in handleactionstatus: ", data);
@@ -33,7 +54,6 @@ var handleActionStatus = (data) => {
 						size="small"
 						icon={<UndoOutlined style={{ fontSize: '17px', marginRight: "3px" }} />}
 						onMouseDown={handleUndoMouseDown}
-						onClick={preventClick}
 					/>
 				</Tooltip>}
 			{/* Delete button */}
@@ -44,7 +64,6 @@ var handleActionStatus = (data) => {
 						size="small"
 						icon={<DeleteOutlined style={{ fontSize: '17px' }} />}
 						onMouseDown={handleDeleteMouseDown}
-						onClick={preventClick}
 					/>
 				</Tooltip>
 			)}
