@@ -1,89 +1,53 @@
-{/* Scrollable top section */}
-<div style={{ 
-    flexShrink: 0, 
-    maxHeight: '40vh', // Limit height to 40% of viewport
-    overflowY: 'auto',
-    paddingRight: '8px', // Add some padding for scrollbar
-    marginBottom: '12px'
-}}>
-    {/* BusinessClients and Funds Filter */}
-    <div style={{ display: 'flex', gap: '20px', marginBottom: '12px' }}>
-        {/* ... existing content ... */}
-    </div>
+// Solution: Combine onMouseDown with preventDefault and stopPropagation
+var handleActionStatus = (data) => {
+	// Hide delete button for rows with status = 2 (Approved)
+	const showDeleteButton = data.data.status !== 2 || (data.data.status == 2 && data.data.action !== null && data.data.action !== 'U');
+	const showUndoButton = (showDeleteButton) || data.data.configStatus == 'deleted' || data.data.configStatus == 'edited'
+	
+	const handleUndoMouseDown = (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		onClickUndoButton(data);
+	};
 
-    {/* Verification Link Display and inactive/active verification link switch */}
-    <div style={{ display: 'flex', gap: '20px', marginBottom: '10px' }}>
-        {/* ... existing content ... */}
-    </div>
+	const handleDeleteMouseDown = (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		onClickDeleteButton(data);
+	};
 
-    {/* Comments section */}
-    <div style={{ marginBottom: '10px' }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Comments</div>
-        <Input.TextArea
-            value={fundComments}
-            onChange={(e) => setFundComments(e.target.value)}
-            rows={2}
-            style={{ 
-                width: '100%',
-                minHeight: '60px', // Set minimum height
-                maxHeight: '120px', // Set maximum height
-                resize: 'vertical' // Allow only vertical resize
-            }}
-            allowClear={true}
-        />
-    </div>
-</div>
+	// Also prevent the onClick event to avoid any double-firing
+	const preventClick = (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+	};
 
-{/* Add Configuration button */}
-<div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px', flexShrink: 0 }}>
-    {/* ... existing button ... */}
-</div>
-
-{/* Table container with fixed height */}
-<div style={{ 
-    flex: 1, 
-    minHeight: '300px', // Minimum height for table
-    position: 'relative',
-    marginBottom: '12px'
-}}>
-    {loading && (
-        {/* ... existing loading spinner ... */}
-    )}
-
-    <div className="ag-theme-alpine rounded-grid" style={{ 
-        height: '100%', 
-        width: '100%' 
-    }}>
-        {/* ... existing AgGridReact ... */}
-    </div>
-</div>
-
-{/* Fixed footer */}
-<div style={{
-    flexShrink: 0,
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: '12px',
-    padding: '16px',
-    borderTop: '1px solid #e5e7eb',
-    backgroundColor: '#f9fafb'
-}}>
-    {/* ... existing buttons ... */}
-</div>
-
-
-
-
-
-
-<Drawer
-    // ... other props ...
-    style={{
-        marginTop: '40px'
-    }}
-    bodyStyle={{
-        padding: 0, // Remove default padding since we're handling it in the inner div
-        height: '100%',
-        overflow: 'hidden' // Prevent the drawer body from scrolling
-    }}
->
+	console.log("in handleactionstatus: ", data);
+	return (
+		<Space>
+			{/* Undo button */}
+			{showUndoButton &&
+				<Tooltip title={"Undo"}>
+					<Button
+						type="text"
+						size="small"
+						icon={<UndoOutlined style={{ fontSize: '17px', marginRight: "3px" }} />}
+						onMouseDown={handleUndoMouseDown}
+						onClick={preventClick}
+					/>
+				</Tooltip>}
+			{/* Delete button */}
+			{showDeleteButton && (
+				<Tooltip title={"Delete"}>
+					<Button
+						type="text"
+						size="small"
+						icon={<DeleteOutlined style={{ fontSize: '17px' }} />}
+						onMouseDown={handleDeleteMouseDown}
+						onClick={preventClick}
+					/>
+				</Tooltip>
+			)}
+		</Space>
+	);
+};
